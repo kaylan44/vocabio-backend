@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend\" checkout -b feat/setup-auth)",
+      "Bash(mkdir -p \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/prisma\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/src/middleware\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/src/routes\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/src/services\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/src/sockets\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/src/lib\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/src/types\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/tests/middleware\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/tests/services\" \"//wsl.localhost/ubuntu/home/ggabriel/vocabio-backend/tests/routes\")",
+      "Read(///wsl.localhost/ubuntu/home/ggabriel/**)",
+      "Bash(npm install *)",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && npm install\")",
+      "Bash(wsl -d Ubuntu -- bash -c \"which node; which npm; ls ~/.nvm/versions/node/ 2>/dev/null; ls /usr/local/bin/node 2>/dev/null; command -v nvm\")",
+      "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\"; source \"$NVM_DIR/nvm.sh\"; cd ~/vocabio-backend && npm install')",
+      "Bash(wsl -d Ubuntu -- bash -c \"ls ~/.nvm/versions/node/v25.0.0/bin/\")",
+      "Bash(wsl -d Ubuntu -- bash -c \"~/.nvm/versions/node/v25.0.0/bin/npm install --prefix ~/vocabio-backend\")",
+      "Bash(wsl -d Ubuntu -- bash -c 'PATH=~/.nvm/versions/node/v25.0.0/bin:$PATH npm install --prefix ~/vocabio-backend')",
+      "Bash(wsl -d Ubuntu -- bash -l -c 'echo $PATH && cat ~/.bashrc | grep nvm')",
+      "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && npm install')",
+      "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && npx prisma generate')",
+      "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && npx jest')",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git add -A && git status\")"
+    ]
+  }
+}

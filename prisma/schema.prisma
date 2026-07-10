@@ -1,0 +1,81 @@
+// Prisma est l'ORM qui fait le lien entre notre code TypeScript et la base PostgreSQL.
+// Ce fichier définit :
+// - comment se connecter à la BDD (datasource)
+// - comment générer le client TypeScript (generator)
+// - la structure des tables (models)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // L'URL est lue depuis la variable d'environnement DATABASE_URL (définie dans .env)
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// TABLE users
+// Miroir de Supabase Auth. L'id est le même UUID
+// que celui émis par Supabase dans le JWT (champ "sub").
+// Créé via upsert lazy dans le middleware auth.
+// ─────────────────────────────────────────────
+model User {
+  id        String   @id               // UUID provenant de Supabase Auth
+  username  String
+  avatarUrl String?                    // Optionnel : photo de profil Google
+  createdAt DateTime @default(now())
+
+  // Relations : un user peut être participant à plusieurs conversations
+  // et avoir envoyé plusieurs messages
+  participants Participant[]
+  sentMessages Message[]
+}
+
+// ─────────────────────────────────────────────
+// TABLE conversations
+// Représente un canal 1:1 entre deux utilisateurs.
+// Une conversation est créée une seule fois (idempotent via getOrCreate).
+// ─────────────────────────────────────────────
+model Conversation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  participants Participant[]
+  messages     Message[]
+}
+
+// ─────────────────────────────────────────────
+// TABLE participants
+// Table pivot : lie un User à une Conversation.
+// Pour une conv 1:1, il y a toujours exactement 2 lignes par conversation.
+// La clé primaire composite (conversationId + userId) empêche les doublons.
+// ─────────────────────────────────────────────
+model Participant {
+  conversationId String
+  userId         String
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  // Clé primaire composite : un user ne peut être qu'une fois dans une conversation
+  @@id([conversationId, userId])
+}
+
+// ─────────────────────────────────────────────
+// TABLE messages
+// readAt est NULL tant que le message n'a pas été lu.
+// Quand le destinataire ouvre la conversation, on fait un UPDATE en masse
+// pour setter readAt sur tous les messages non lus.
+// ─────────────────────────────────────────────
+model Message {
+  id             String    @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String
+  createdAt      DateTime  @default(now())
+  readAt         DateTime? // NULL = non lu, rempli quand le destinataire ouvre la conv
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation(fields: [senderId], references: [id])
+}
