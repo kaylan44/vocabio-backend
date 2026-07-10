@@ -15,7 +15,12 @@
       "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && npm install')",
       "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && npx prisma generate')",
       "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && npx jest')",
-      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git add -A && git status\")"
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git add -A && git status\")",
+      "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && git push -u origin feat/setup-auth')",
+      "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && git checkout main && git pull origin main')",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git stash && git checkout main && git pull origin main\")",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git checkout -b feat/rest-api\")",
+      "Bash(wsl -d Ubuntu -- bash -c 'cd ~/vocabio-backend && git add -A && git commit -m '\\\\''feat: API REST conversations & messages \\(étape 2\\) *)"
     ]
   }
 }

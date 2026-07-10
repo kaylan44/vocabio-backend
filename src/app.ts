@@ -20,6 +20,9 @@ import { createServer } from 'http';
 import { initSocket } from './lib/socket';
 import { initSocketHandlers } from './sockets';
 import webhookRouter from './routes/webhooks';
+import userRouter from './routes/users';
+import conversationRouter from './routes/conversations';
+import messageRouter from './routes/messages';
 
 const app = express();
 
@@ -41,12 +44,18 @@ app.use('/webhooks', express.raw({ type: 'application/json' }), (req, _res, next
 app.use(express.json());
 
 // ─────────────────────────────────────────────
-// Routes (les autres routes seront ajoutées aux étapes suivantes)
+// Routes
 // ─────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   // Route de vérification : Railway l'utilise pour savoir si le serveur est up
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+app.use('/users', userRouter);
+app.use('/conversations', conversationRouter);
+// Les routes messages sont imbriquées sous /conversations/:id
+// ex: GET /conversations/abc/messages
+app.use('/conversations', messageRouter);
 
 // ─────────────────────────────────────────────
 // Serveur HTTP + Socket.io
