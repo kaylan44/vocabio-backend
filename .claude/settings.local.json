@@ -20,7 +20,13 @@
       "Bash(wsl -d Ubuntu -- bash -c 'export NVM_DIR=\"$HOME/.nvm\" && source \"$HOME/.nvm/nvm.sh\" && cd ~/vocabio-backend && git checkout main && git pull origin main')",
       "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git stash && git checkout main && git pull origin main\")",
       "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git checkout -b feat/rest-api\")",
-      "Bash(wsl -d Ubuntu -- bash -c 'cd ~/vocabio-backend && git add -A && git commit -m '\\\\''feat: API REST conversations & messages \\(étape 2\\) *)"
+      "Bash(wsl -d Ubuntu -- bash -c 'cd ~/vocabio-backend && git add -A && git commit -m '\\\\''feat: API REST conversations & messages \\(étape 2\\) *)",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git status && git log origin/main..HEAD --oneline\")",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git checkout main && git pull origin main\")",
+      "Bash(wsl -d Ubuntu -- bash -c \"rm ~/vocabio-backend/.git/index.lock && cd ~/vocabio-backend && git pull origin main\")",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git pull origin main\")",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git checkout -b feat/realtime\")",
+      "Bash(wsl -d Ubuntu -- bash -c 'cd ~/vocabio-backend && git add -A && git commit -m '\\\\''feat: temps réel Socket.io \\(étape 3\\) *)"
     ]
   }
 }
