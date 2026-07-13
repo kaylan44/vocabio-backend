@@ -27,7 +27,8 @@ jest.mock('../../src/middleware/auth', () => ({
 jest.mock('../../src/services/conversationService', () => ({
   getOrCreateConversation: jest.fn(),
   getUserConversations: jest.fn(),
-  assertParticipant: jest.fn(),
+  // assertParticipant N'EST PAS mocké ici car conversations.ts ne l'importe pas.
+  // (C'est messages.ts qui l'utilise — voir messages.test.ts)
 }));
 
 // Socket.io : pas besoin d'un vrai serveur pour les tests REST

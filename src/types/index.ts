@@ -1,8 +1,6 @@
 // Ce fichier centralise les types TypeScript partagés entre les différents modules.
 // Importer depuis ici plutôt que de redéfinir les mêmes types partout.
 
-import { Request } from 'express';
-
 // ─────────────────────────────────────────────
 // AuthUser
 // Représente l'utilisateur authentifié extrait du JWT Supabase.
@@ -16,11 +14,27 @@ export interface AuthUser {
 }
 
 // ─────────────────────────────────────────────
-// AuthRequest
-// Extension du type Request d'Express pour inclure req.user.
-// On l'utilise dans les handlers à la place de Request pour avoir
-// l'autocomplétion TypeScript sur req.user.
+// Augmentation globale du namespace Express
+//
+// Pourquoi cette approche plutôt qu'une interface AuthRequest ?
+// Express's router.get/post/patch overloads n'acceptent pas les sous-types de Request
+// dans la signature du handler, ce qui forçait des casts `req as AuthRequest`
+// non vérifiables par TypeScript.
+//
+// En augmentant le namespace global Express.Request, req.user devient disponible
+// sur le type Request de base directement — sans cast.
+// TypeScript garantit au compile-time que user est défini si authMiddleware a tourné.
 // ─────────────────────────────────────────────
+declare global {
+  namespace Express {
+    interface Request {
+      user: AuthUser;
+    }
+  }
+}
+
+// AuthRequest reste exporté pour compatibilité avec le middleware auth qui l'utilise encore
+import { Request } from 'express';
 export interface AuthRequest extends Request {
   user: AuthUser;
 }
