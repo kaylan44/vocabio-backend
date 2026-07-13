@@ -12,6 +12,7 @@ datasource db {
   provider = "postgresql"
   // L'URL est lue depuis la variable d'environnement DATABASE_URL (définie dans .env)
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─────────────────────────────────────────────
