@@ -3,7 +3,7 @@
 // POST /conversations         → créer ou récupérer une conversation 1:1
 // GET  /conversations         → lister les conversations de l'utilisateur connecté
 
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { getOrCreateConversation, getUserConversations } from '../services/conversationService';
 import { AuthRequest } from '../types';
@@ -16,7 +16,8 @@ router.use(authMiddleware);
 // POST /conversations
 // Corps attendu : { recipientId: string }
 // ─────────────────────────────────────────────
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
+  const { user } = req as AuthRequest;
   const { recipientId } = req.body as { recipientId?: string };
 
   if (!recipientId) {
@@ -25,13 +26,13 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   }
 
   // On ne peut pas démarrer une conversation avec soi-même
-  if (recipientId === req.user.id) {
+  if (recipientId === user.id) {
     res.status(400).json({ error: 'Impossible de créer une conversation avec soi-même' });
     return;
   }
 
   try {
-    const conversation = await getOrCreateConversation(req.user.id, recipientId);
+    const conversation = await getOrCreateConversation(user.id, recipientId);
     // 200 si conversation existante, 201 si nouvelle — les deux sont gérés côté client
     res.status(200).json(conversation);
   } catch (error) {
@@ -43,9 +44,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 // ─────────────────────────────────────────────
 // GET /conversations
 // ─────────────────────────────────────────────
-router.get('/', async (req: AuthRequest, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
+  const { user } = req as AuthRequest;
   try {
-    const conversations = await getUserConversations(req.user.id);
+    const conversations = await getUserConversations(user.id);
     res.json(conversations);
   } catch (error) {
     console.error('[GET /conversations]', error);

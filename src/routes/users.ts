@@ -4,7 +4,7 @@
 // Retourne les utilisateurs dont le username contient la query,
 // en excluant l'utilisateur connecté de ses propres résultats.
 
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { searchUsers } from '../services/userService';
 import { AuthRequest } from '../types';
@@ -15,7 +15,8 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /users/search?q=<query>
-router.get('/search', async (req: AuthRequest, res: Response) => {
+router.get('/search', async (req: Request, res: Response) => {
+  const { user } = req as AuthRequest;
   const query = req.query.q as string | undefined;
 
   if (!query) {
@@ -24,7 +25,7 @@ router.get('/search', async (req: AuthRequest, res: Response) => {
   }
 
   try {
-    const users = await searchUsers(query, req.user.id);
+    const users = await searchUsers(query, user.id);
     res.json(users);
   } catch (error) {
     console.error('[GET /users/search]', error);

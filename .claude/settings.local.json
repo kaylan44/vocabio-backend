@@ -26,7 +26,11 @@
       "Bash(wsl -d Ubuntu -- bash -c \"rm ~/vocabio-backend/.git/index.lock && cd ~/vocabio-backend && git pull origin main\")",
       "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git pull origin main\")",
       "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git checkout -b feat/realtime\")",
-      "Bash(wsl -d Ubuntu -- bash -c 'cd ~/vocabio-backend && git add -A && git commit -m '\\\\''feat: temps réel Socket.io \\(étape 3\\) *)"
+      "Bash(wsl -d Ubuntu -- bash -c 'cd ~/vocabio-backend && git add -A && git commit -m '\\\\''feat: temps réel Socket.io \\(étape 3\\) *)",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git push -u origin feat/realtime\")",
+      "Bash(wsl -d Ubuntu -- bash -c \"cd ~/vocabio-backend && git checkout -- .claude/settings.local.json && git checkout main && git pull origin main\")",
+      "Bash(wsl -d Ubuntu -- bash -c 'cd ~/vocabio-backend && git add -A && git commit -m '\\\\''feat: tests routes REST \\(étape 5\\) *)",
+      "Bash(git push *)"
     ]
   }
 }
