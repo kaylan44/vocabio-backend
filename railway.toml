@@ -1,0 +1,33 @@
+# Configuration Railway pour le déploiement automatique.
+#
+# Railway lit ce fichier à la racine du repo pour savoir comment
+# construire et démarrer l'application.
+#
+# Documentation : https://docs.railway.app/reference/config-as-code
+
+[build]
+# Commandes exécutées UNE SEULE FOIS lors du build de l'image.
+#
+# Ordre important :
+# 1. npm ci       → installe les dépendances (version exacte du package-lock.json)
+# 2. prisma generate → génère le client Prisma TypeScript à partir du schema.prisma
+#                      Sans ça, les imports de @prisma/client échouent au runtime
+# 3. npm run build → compile le TypeScript vers dist/ (via tsc)
+buildCommand = "npm ci && npx prisma generate && npm run build"
+
+[deploy]
+# Commande exécutée à CHAQUE démarrage du conteneur.
+#
+# Ordre important :
+# 1. prisma migrate deploy → applique les migrations SQL en attente sur la BDD de prod
+#                            (différent de "migrate dev" qui crée aussi les fichiers de migration)
+#                            Si toutes les migrations sont déjà appliquées, c'est un no-op rapide.
+# 2. node dist/app.js      → démarre le serveur compilé
+#
+# Pourquoi migrate deploy au démarrage et pas au build ?
+# Le build n'a pas accès à la BDD de prod (DATABASE_URL n'est pas disponible à ce stade).
+# Le démarrage du conteneur a accès à toutes les variables d'environnement Railway.
+startCommand = "npx prisma migrate deploy && node dist/app.js"
+
+# Railway détecte automatiquement le port via la variable PORT qu'il injecte.
+# Notre app lit process.env.PORT dans src/app.ts — rien à configurer ici.
