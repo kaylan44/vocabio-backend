@@ -14,7 +14,7 @@
 // En créant le serveur HTTP manuellement et en y greffant Express,
 // on donne à Socket.io accès à ce serveur.
 
-import 'dotenv/config'; // Charge les variables d'environnement depuis .env en premier
+import 'dotenv/config'; // Charge .env en local — no-op en prod si le fichier est absent
 import express from 'express';
 import { createServer } from 'http';
 import { initSocket } from './lib/socket';
