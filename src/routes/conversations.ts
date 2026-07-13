@@ -6,7 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { getOrCreateConversation, getUserConversations } from '../services/conversationService';
-import { AuthRequest } from '../types';
+import { handleError } from '../utils/errors';
 
 const router = Router();
 
@@ -17,7 +17,7 @@ router.use(authMiddleware);
 // Corps attendu : { recipientId: string }
 // ─────────────────────────────────────────────
 router.post('/', async (req: Request, res: Response) => {
-  const { user } = req as AuthRequest;
+  // req.user est garanti par le middleware auth (déclaré dans src/types/index.ts)
   const { recipientId } = req.body as { recipientId?: string };
 
   if (!recipientId) {
@@ -26,18 +26,17 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   // On ne peut pas démarrer une conversation avec soi-même
-  if (recipientId === user.id) {
+  if (recipientId === req.user.id) {
     res.status(400).json({ error: 'Impossible de créer une conversation avec soi-même' });
     return;
   }
 
   try {
-    const conversation = await getOrCreateConversation(user.id, recipientId);
+    const conversation = await getOrCreateConversation(req.user.id, recipientId);
     // 200 si conversation existante, 201 si nouvelle — les deux sont gérés côté client
     res.status(200).json(conversation);
   } catch (error) {
-    console.error('[POST /conversations]', error);
-    res.status(500).json({ error: 'Erreur lors de la création de la conversation' });
+    handleError(res, error, 'POST /conversations');
   }
 });
 
@@ -45,13 +44,11 @@ router.post('/', async (req: Request, res: Response) => {
 // GET /conversations
 // ─────────────────────────────────────────────
 router.get('/', async (req: Request, res: Response) => {
-  const { user } = req as AuthRequest;
   try {
-    const conversations = await getUserConversations(user.id);
+    const conversations = await getUserConversations(req.user.id);
     res.json(conversations);
   } catch (error) {
-    console.error('[GET /conversations]', error);
-    res.status(500).json({ error: 'Erreur lors de la récupération des conversations' });
+    handleError(res, error, 'GET /conversations');
   }
 });
 

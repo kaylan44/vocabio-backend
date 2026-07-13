@@ -7,8 +7,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { searchUsers } from '../services/userService';
-import { AuthRequest } from '../types';
-
 const router = Router();
 
 // Toutes les routes de ce router nécessitent une authentification
@@ -16,7 +14,7 @@ router.use(authMiddleware);
 
 // GET /users/search?q=<query>
 router.get('/search', async (req: Request, res: Response) => {
-  const { user } = req as AuthRequest;
+  // req.user est garanti par authMiddleware (déclaré dans src/types/index.ts)
   const query = req.query.q as string | undefined;
 
   if (!query) {
@@ -25,7 +23,7 @@ router.get('/search', async (req: Request, res: Response) => {
   }
 
   try {
-    const users = await searchUsers(query, user.id);
+    const users = await searchUsers(query, req.user.id);
     res.json(users);
   } catch (error) {
     console.error('[GET /users/search]', error);

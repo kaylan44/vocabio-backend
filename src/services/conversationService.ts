@@ -104,10 +104,8 @@ export const getUserConversations = async (userId: string) => {
         },
       },
     },
-    // Conversations triées par date du dernier message (les plus récentes en premier)
-    orderBy: {
-      createdAt: 'desc',
-    },
+    // Pas de orderBy ici : on trie après enrichissement par lastMessage.createdAt
+    // (Prisma ne supporte pas orderBy sur une relation agrégée dans findMany)
   });
 
   // Pour chaque conversation, on compte les messages non lus séparément.
@@ -135,6 +133,15 @@ export const getUserConversations = async (userId: string) => {
       };
     })
   );
+
+  // Tri par date du dernier message décroissante (les conversations les plus actives en premier).
+  // Les conversations sans aucun message se retrouvent à la fin (null < toute date).
+  enriched.sort((a, b) => {
+    const dateA = a.lastMessage?.createdAt ?? '';
+    const dateB = b.lastMessage?.createdAt ?? '';
+    // Comparaison de strings ISO 8601 : ordre lexicographique = ordre chronologique
+    return dateB > dateA ? 1 : dateB < dateA ? -1 : 0;
+  });
 
   return enriched;
 };
