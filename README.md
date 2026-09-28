@@ -111,6 +111,7 @@ Tous les endpoints requièrent le header `Authorization: Bearer <JWT>`.
 
 | Méthode | Route | Description |
 |---|---|---|
+| `GET` | `/users` | Lister les utilisateurs (sauf soi-même), triés par username, 100 max |
 | `GET` | `/users/search?q=` | Rechercher un utilisateur par username |
 | `POST` | `/conversations` | Créer ou récupérer une conversation 1:1 |
 | `GET` | `/conversations` | Lister les conversations de l'utilisateur |
@@ -136,16 +137,27 @@ const socket = io(SERVER_URL, {
 |---|---|---|
 | `join_conversation` | `{ conversationId }` | Rejoindre la room d'une conversation |
 | `send_message` | `{ conversationId, content }` | Envoyer un message |
-| `mark_read` | `{ messageId }` | Marquer un message comme lu |
+| `mark_read` | `{ conversationId }` | Marquer tous les messages reçus de la conversation comme lus |
 | `typing` | `{ conversationId }` | Indicateur de saisie |
 
 ### Événements serveur → client
 
+À la connexion, chaque socket rejoint automatiquement sa room personnelle `user:<id>`.
+`new_message` et `message_read` sont émis à la room de la conversation **et** aux rooms
+personnelles des participants : un client reçoit donc les nouveaux messages de toutes ses
+conversations sans avoir à les rejoindre. `user_typing` reste limité à la room de la conversation.
+
 | Événement | Payload | Description |
 |---|---|---|
-| `new_message` | `{ id, conversationId, senderId, content, createdAt }` | Nouveau message reçu |
-| `message_read` | `{ messageId, readAt }` | Confirmation de lecture (pour l'expéditeur) |
-| `user_typing` | `{ conversationId, userId }` | Un utilisateur est en train d'écrire |
+| `new_message` | `{ id, conversationId, senderId, sender, content, createdAt, readAt }` | Nouveau message (y compris ceux envoyés par soi-même) |
+| `message_read` | `{ conversationId, readAt, readByUserId }` | Messages de la conversation lus par `readByUserId` |
+| `user_typing` | `{ conversationId, userId, username }` | Un utilisateur est en train d'écrire |
+
+### CORS
+
+Les appels depuis un navigateur (Expo web) nécessitent que l'origine figure dans
+`CORS_ORIGINS` (liste séparée par des virgules, défaut `http://localhost:8081`).
+La même liste s'applique aux routes REST et à Socket.io.
 
 ---
 
