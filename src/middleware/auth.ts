@@ -8,64 +8,16 @@
 //   4. Attacher req.user pour les handlers suivants
 //
 // Pourquoi JWKS et pas un secret partagé ?
-// Supabase utilise des clés asymétriques RS256 : Supabase signe le JWT avec
-// sa clé PRIVÉE, et notre serveur vérifie avec la clé PUBLIQUE.
+// Supabase signe le JWT avec sa clé PRIVÉE (asymétrique, ES256 sur ce projet),
+// et notre serveur vérifie avec la clé PUBLIQUE exposée par l'endpoint JWKS.
 // Avantage : on n'a jamais besoin de connaître la clé privée.
-// jwks-rsa télécharge la clé publique depuis l'endpoint JWKS Supabase
-// et la met en cache → pas d'appel réseau à chaque requête.
+// Client JWKS, cache et algorithmes acceptés : voir src/lib/jwt.ts.
 
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import jwksRsa from 'jwks-rsa';
+import { getSigningKey, SUPABASE_JWT_ALGORITHMS, SupabaseJwtPayload } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { AuthUser } from '../types';
-
-// ─────────────────────────────────────────────
-// Client JWKS
-// jwks-rsa expose un client qui :
-//   - télécharge les clés publiques depuis l'URL JWKS Supabase
-//   - les met en cache (cache: true) pour éviter un appel réseau à chaque vérification
-//   - renouvelle le cache toutes les 10 minutes (jwksRequestsPerMinute limite les requêtes)
-// ─────────────────────────────────────────────
-const jwksClient = jwksRsa({
-  // L'URL JWKS de Supabase : {SUPABASE_URL}/auth/v1/.well-known/jwks.json
-  jwksUri: `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
-  cache: true,
-  cacheMaxEntries: 5,
-  cacheMaxAge: 10 * 60 * 1000, // 10 minutes en millisecondes
-});
-
-// ─────────────────────────────────────────────
-// getSigningKey
-// Fonction callback passée à jwt.verify pour récupérer la clé publique
-// correspondant au "kid" (key ID) présent dans le header du JWT.
-// jwks-rsa gère le cache automatiquement.
-// ─────────────────────────────────────────────
-const getSigningKey = (
-  header: jwt.JwtHeader,
-  callback: jwt.SigningKeyCallback
-) => {
-  jwksClient.getSigningKey(header.kid, (err, key) => {
-    if (err || !key) return callback(err ?? new Error('Clé JWKS introuvable'));
-    // getPublicKey() retourne la clé publique au format PEM, utilisable par jwt.verify
-    callback(null, key.getPublicKey());
-  });
-};
-
-// ─────────────────────────────────────────────
-// Payload JWT Supabase
-// Structure du payload décodé d'un token Supabase.
-// "sub" = Subject = l'UUID de l'utilisateur (identique à auth.users.id).
-// ─────────────────────────────────────────────
-interface SupabaseJwtPayload extends jwt.JwtPayload {
-  sub: string;
-  email: string;
-  user_metadata?: {
-    full_name?: string;
-    name?: string;
-    avatar_url?: string;
-  };
-}
 
 // ─────────────────────────────────────────────
 // Middleware authMiddleware
@@ -83,7 +35,7 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
 
   // 2. Vérifier la signature du JWT avec la clé publique JWKS
   // jwt.verify est asynchrone quand on lui passe un callback de clé (getSigningKey)
-  jwt.verify(token, getSigningKey, { algorithms: ['RS256'] }, async (err, decoded) => {
+  jwt.verify(token, getSigningKey, { algorithms: SUPABASE_JWT_ALGORITHMS }, async (err, decoded) => {
     if (err || !decoded) {
       res.status(401).json({ error: 'Token invalide ou expiré' });
       return;
