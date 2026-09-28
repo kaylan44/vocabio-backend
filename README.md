@@ -56,7 +56,9 @@ Système de messagerie instantanée entre utilisateurs de l'application Vocabio.
 ## Modèle de données
 
 ### Table `users`
-Synchronisée depuis Supabase Auth via webhook à l'inscription.
+Synchronisée depuis Supabase Auth par un trigger Postgres sur `auth.users` (migration
+`sync_auth_users`, qui rattrape aussi les comptes existants). L'upsert lazy du middleware auth
+et le webhook d'inscription restent en filet de sécurité.
 
 ```sql
 users (
