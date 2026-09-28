@@ -13,35 +13,11 @@
 
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import jwksRsa from 'jwks-rsa';
+// Même client JWKS que le middleware HTTP (cache partagé → pas de double appel réseau)
+import { getSigningKey, SUPABASE_JWT_ALGORITHMS, SupabaseJwtPayload } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { userRoom } from '../lib/socket';
 import { registerConversationHandlers } from './handlers';
-
-// Réutilise le même client JWKS que le middleware HTTP
-// (le cache est partagé → pas de double appel réseau)
-const jwksClient = jwksRsa({
-  jwksUri: `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
-  cache: true,
-  cacheMaxEntries: 5,
-  cacheMaxAge: 10 * 60 * 1000,
-});
-
-const getSigningKey = (
-  header: jwt.JwtHeader,
-  callback: jwt.SigningKeyCallback
-) => {
-  jwksClient.getSigningKey(header.kid, (err, key) => {
-    if (err || !key) return callback(err ?? new Error('Clé JWKS introuvable'));
-    callback(null, key.getPublicKey());
-  });
-};
-
-interface SupabaseJwtPayload extends jwt.JwtPayload {
-  sub: string;
-  email: string;
-  user_metadata?: { full_name?: string; name?: string; avatar_url?: string };
-}
 
 /**
  * Initialise les handlers Socket.io.
@@ -62,7 +38,7 @@ export const initSocketHandlers = (io: Server): void => {
       return next(new Error('Token manquant'));
     }
 
-    jwt.verify(token, getSigningKey, { algorithms: ['RS256'] }, async (err, decoded) => {
+    jwt.verify(token, getSigningKey, { algorithms: SUPABASE_JWT_ALGORITHMS }, async (err, decoded) => {
       if (err || !decoded) {
         return next(new Error('Token invalide ou expiré'));
       }

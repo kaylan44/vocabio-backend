@@ -79,8 +79,22 @@ describe('authMiddleware', () => {
     exp: Math.floor(Date.now() / 1000) + 3600,
   };
 
+  beforeAll(() => {
+    // Le client JWKS est construit à partir de SUPABASE_URL au premier appel
+    process.env.SUPABASE_URL = 'https://test.supabase.co';
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  // ─────────────────────────────────────────────
+  it('accepte les tokens ES256 (clé elliptique Supabase) et RS256', () => {
+    const req = mockRequest({ authorization: 'Bearer some.token.here' });
+    authMiddleware(req as Request, mockResponse() as Response, mockNext);
+
+    const options = (jwt.verify as jest.Mock).mock.calls[0][2];
+    expect(options.algorithms).toEqual(expect.arrayContaining(['ES256', 'RS256']));
   });
 
   // ─────────────────────────────────────────────
