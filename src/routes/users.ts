@@ -6,11 +6,22 @@
 
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
-import { searchUsers } from '../services/userService';
+import { listUsers, searchUsers } from '../services/userService';
 const router = Router();
 
 // Toutes les routes de ce router nécessitent une authentification
 router.use(authMiddleware);
+
+// GET /users — tous les utilisateurs (sauf soi-même), triés par username
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const users = await listUsers(req.user.id);
+    res.json(users);
+  } catch (error) {
+    console.error('[GET /users]', error);
+    res.status(500).json({ error: 'Erreur lors du chargement des utilisateurs' });
+  }
+});
 
 // GET /users/search?q=<query>
 router.get('/search', async (req: Request, res: Response) => {

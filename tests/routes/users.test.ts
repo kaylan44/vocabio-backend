@@ -8,14 +8,16 @@ jest.mock('../../src/middleware/auth', () => ({
 }));
 
 jest.mock('../../src/services/userService', () => ({
+  listUsers: jest.fn(),
   searchUsers: jest.fn(),
 }));
 
 import request from 'supertest';
 import express from 'express';
 import userRouter from '../../src/routes/users';
-import { searchUsers } from '../../src/services/userService';
+import { listUsers, searchUsers } from '../../src/services/userService';
 
+const mockListUsers = listUsers as jest.Mock;
 const mockSearchUsers = searchUsers as jest.Mock;
 
 const app = express();
@@ -24,6 +26,27 @@ app.use('/users', userRouter);
 
 describe('Routes /users', () => {
   beforeEach(() => jest.clearAllMocks());
+
+  describe('GET /users', () => {
+    it('retourne 200 et la liste des utilisateurs, sans l\'utilisateur connecté', async () => {
+      const fakeUsers = [{ id: 'user-2', username: 'Bob', avatarUrl: null }];
+      mockListUsers.mockResolvedValue(fakeUsers);
+
+      const res = await request(app).get('/users');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(fakeUsers);
+      expect(mockListUsers).toHaveBeenCalledWith('user-1');
+    });
+
+    it('retourne 500 si le service lance une erreur', async () => {
+      mockListUsers.mockRejectedValue(new Error('DB error'));
+
+      const res = await request(app).get('/users');
+
+      expect(res.status).toBe(500);
+    });
+  });
 
   describe('GET /users/search', () => {
     it('retourne 200 et les utilisateurs correspondants', async () => {

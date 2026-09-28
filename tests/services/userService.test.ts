@@ -8,13 +8,30 @@ jest.mock('../../src/lib/prisma', () => ({
   },
 }));
 
-import { searchUsers } from '../../src/services/userService';
+import { LIST_USERS_LIMIT, listUsers, searchUsers } from '../../src/services/userService';
 import { prisma } from '../../src/lib/prisma';
 
 const mockFindMany = prisma.user.findMany as jest.Mock;
 
 describe('userService', () => {
   beforeEach(() => jest.clearAllMocks());
+
+  describe('listUsers', () => {
+    it('exclut l\'utilisateur connecté, trie par username et plafonne le nombre de résultats', async () => {
+      const fakeUsers = [{ id: 'user-2', username: 'Bob', avatarUrl: null }];
+      mockFindMany.mockResolvedValue(fakeUsers);
+
+      const result = await listUsers('user-1');
+
+      expect(result).toEqual(fakeUsers);
+      expect(mockFindMany).toHaveBeenCalledWith({
+        where: { NOT: { id: 'user-1' } },
+        select: { id: true, username: true, avatarUrl: true },
+        orderBy: { username: 'asc' },
+        take: LIST_USERS_LIMIT,
+      });
+    });
+  });
 
   describe('searchUsers', () => {
     it('retourne les utilisateurs dont le username correspond à la query', async () => {

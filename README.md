@@ -111,6 +111,7 @@ Tous les endpoints requièrent le header `Authorization: Bearer <JWT>`.
 
 | Méthode | Route | Description |
 |---|---|---|
+| `GET` | `/users` | Lister les utilisateurs (sauf soi-même), triés par username, 100 max |
 | `GET` | `/users/search?q=` | Rechercher un utilisateur par username |
 | `POST` | `/conversations` | Créer ou récupérer une conversation 1:1 |
 | `GET` | `/conversations` | Lister les conversations de l'utilisateur |
