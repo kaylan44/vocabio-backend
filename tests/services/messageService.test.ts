@@ -10,6 +10,9 @@ jest.mock('../../src/lib/prisma', () => ({
       findMany: jest.fn(),
       updateMany: jest.fn(),
     },
+    participant: {
+      findMany: jest.fn(),
+    },
   },
 }));
 
@@ -21,6 +24,7 @@ const mockGetIO = jest.fn().mockReturnValue({ to: mockTo });
 
 jest.mock('../../src/lib/socket', () => ({
   getIO: mockGetIO,
+  userRoom: (userId: string) => `user:${userId}`,
 }));
 
 import { createMessage, getMessages, markConversationAsRead } from '../../src/services/messageService';
@@ -29,6 +33,9 @@ import { prisma } from '../../src/lib/prisma';
 const mockCreate = prisma.message.create as jest.Mock;
 const mockFindMany = prisma.message.findMany as jest.Mock;
 const mockUpdateMany = prisma.message.updateMany as jest.Mock;
+const mockParticipants = prisma.participant.findMany as jest.Mock;
+
+const expectedRooms = ['conv-1', 'user:user-1', 'user:user-2'];
 
 const fakeMessage = {
   id: 'msg-1',
@@ -41,7 +48,10 @@ const fakeMessage = {
 };
 
 describe('messageService', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockParticipants.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+  });
 
   // ─────────────────────────────────────────────
   describe('createMessage', () => {
@@ -57,13 +67,15 @@ describe('messageService', () => {
       );
     });
 
-    it('émet l\'événement new_message sur la room Socket.io de la conversation', async () => {
+    it('émet new_message sur la room de la conversation et les rooms des participants', async () => {
       mockCreate.mockResolvedValue(fakeMessage);
 
       await createMessage('conv-1', 'user-1', 'Bonjour !');
 
-      // Vérifie que io.to('conv-1').emit('new_message', ...) a bien été appelé
-      expect(mockTo).toHaveBeenCalledWith('conv-1');
+      expect(mockParticipants).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { conversationId: 'conv-1' } })
+      );
+      expect(mockTo).toHaveBeenCalledWith(expectedRooms);
       expect(mockEmit).toHaveBeenCalledWith('new_message', expect.objectContaining({
         id: 'msg-1',
         conversationId: 'conv-1',
@@ -75,6 +87,17 @@ describe('messageService', () => {
       mockCreate.mockResolvedValue(fakeMessage);
       const result = await createMessage('conv-1', 'user-1', 'Bonjour !');
       expect(result).toEqual(fakeMessage);
+    });
+
+    it('retourne le message même si la diffusion Socket.io échoue', async () => {
+      mockCreate.mockResolvedValue(fakeMessage);
+      mockParticipants.mockRejectedValue(new Error('DB indisponible'));
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const result = await createMessage('conv-1', 'user-1', 'Bonjour !');
+
+      expect(result).toEqual(fakeMessage);
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 
@@ -130,7 +153,7 @@ describe('messageService', () => {
 
       await markConversationAsRead('conv-1', 'user-1');
 
-      expect(mockTo).toHaveBeenCalledWith('conv-1');
+      expect(mockTo).toHaveBeenCalledWith(expectedRooms);
       expect(mockEmit).toHaveBeenCalledWith('message_read', expect.objectContaining({
         conversationId: 'conv-1',
         readByUserId: 'user-1',

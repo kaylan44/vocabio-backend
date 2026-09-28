@@ -15,6 +15,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import jwksRsa from 'jwks-rsa';
 import { prisma } from '../lib/prisma';
+import { userRoom } from '../lib/socket';
 import { registerConversationHandlers } from './handlers';
 
 // Réutilise le même client JWKS que le middleware HTTP
@@ -95,6 +96,10 @@ export const initSocketHandlers = (io: Server): void => {
   // ─────────────────────────────────────────────
   io.on('connection', (socket: Socket) => {
     console.log(`[socket] Client connecté : ${socket.data.user?.id}`);
+
+    // Room personnelle : reçoit new_message / message_read de toutes ses conversations,
+    // y compris celles qui ne sont pas ouvertes à l'écran.
+    socket.join(userRoom(socket.data.user.id));
 
     // Enregistre les handlers d'événements métier (join, send, etc.)
     registerConversationHandlers(io, socket);

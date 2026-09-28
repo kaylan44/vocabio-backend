@@ -9,7 +9,21 @@
 //        Socket handler → createMessage() → persiste + émet Socket
 
 import { prisma } from '../lib/prisma';
-import { getIO } from '../lib/socket';
+import { getIO, userRoom } from '../lib/socket';
+
+/**
+ * Rooms à notifier pour un événement de conversation : la room de la conversation
+ * (sockets qui l'ont ouverte) + la room personnelle de chaque participant
+ * (pour mettre à jour la liste des conversations et les badges non lus).
+ * Socket.io dédoublonne : un socket présent dans plusieurs rooms ne reçoit l'événement qu'une fois.
+ */
+const conversationRooms = async (conversationId: string): Promise<string[]> => {
+  const participants = await prisma.participant.findMany({
+    where: { conversationId },
+    select: { userId: true },
+  });
+  return [conversationId, ...participants.map((p) => userRoom(p.userId))];
+};
 
 // ─────────────────────────────────────────────
 // createMessage
@@ -49,12 +63,12 @@ export const createMessage = async (
   });
 
   // Étape 2 : Diffuser le message en temps réel via Socket.io
-  // io.to(conversationId) cible la "room" de cette conversation :
-  // tous les sockets qui ont fait socket.join(conversationId) recevront l'événement.
-  // Cela inclut TOUS les participants connectés, y compris l'expéditeur lui-même
-  // (utile pour confirmer côté client que le message a bien été envoyé).
+  // Cible la room de la conversation ET la room personnelle de chaque participant,
+  // y compris l'expéditeur lui-même (utile pour confirmer l'envoi et synchroniser
+  // ses autres appareils).
   try {
-    getIO().to(conversationId).emit('new_message', {
+    const rooms = await conversationRooms(conversationId);
+    getIO().to(rooms).emit('new_message', {
       id: message.id,
       conversationId: message.conversationId,
       senderId: message.senderId,
@@ -144,7 +158,10 @@ export const markConversationAsRead = async (
   // Utile pour afficher les indicateurs de lecture (✓✓) côté expéditeur
   if (result.count > 0) {
     try {
-      getIO().to(conversationId).emit('message_read', {
+      // Rooms personnelles incluses : l'expéditeur voit ses messages lus même hors
+      // de la conversation, et les autres appareils du lecteur remettent le badge à zéro.
+      const rooms = await conversationRooms(conversationId);
+      getIO().to(rooms).emit('message_read', {
         conversationId,
         readAt,
         readByUserId: userId,

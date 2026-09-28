@@ -16,7 +16,9 @@
 
 import 'dotenv/config'; // Charge .env en local — no-op en prod si le fichier est absent
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
+import { allowedOrigins } from './lib/cors';
 import { initSocket } from './lib/socket';
 import { initSocketHandlers } from './sockets';
 import webhookRouter from './routes/webhooks';
@@ -29,6 +31,10 @@ const app = express();
 // ─────────────────────────────────────────────
 // Middlewares globaux
 // ─────────────────────────────────────────────
+
+// CORS en premier : les preflight OPTIONS doivent recevoir leurs en-têtes
+// avant que authMiddleware ne les rejette en 401 (ils n'ont pas de token).
+app.use(cors({ origin: allowedOrigins }));
 
 // Webhook Supabase : on a besoin du body brut (string) pour vérifier le HMAC.
 // On monte cette route AVANT express.json() pour capter le body non parsé.
