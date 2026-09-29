@@ -171,6 +171,11 @@ La même liste s'applique aux routes REST et à Socket.io.
 - Vérification côté serveur que l'utilisateur est bien **participant** de la conversation avant tout accès aux messages
 - Le JWT est vérifié en local (clé publique Supabase) — pas d'appel réseau à Supabase à chaque requête
 - Les messages ne sont accessibles qu'aux participants de la conversation
+- **RLS activé sans policy** sur toutes les tables de `public` (migration `enable_rls`) :
+  le Data API Supabase (PostgREST, clé `anon`) n'y a aucun accès, le mobile passe
+  uniquement par ce backend. Prisma se connecte en `postgres` (propriétaire des tables)
+  et n'est donc pas soumis au RLS. **Toute nouvelle table doit activer le RLS dans sa
+  migration** (vérifié par `tests/prisma/rls.test.ts`).
 
 ---
 
