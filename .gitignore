@@ -70,6 +70,10 @@ web_modules/
 .env.*
 !.env.example
 
+# Claude Code: personal settings (permissions accumulated across sessions)
+# stay local. Only .claude/settings.json (shared rules) is versioned.
+.claude/settings.local.json
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
