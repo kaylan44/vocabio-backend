@@ -15,9 +15,9 @@ describe('parseAllowedOrigins', () => {
     ]);
   });
 
-  it('retombe sur localhost:8081 si la variable est absente ou vide', () => {
-    expect(parseAllowedOrigins(undefined)).toEqual(['http://localhost:8081']);
-    expect(parseAllowedOrigins('  ')).toEqual(['http://localhost:8081']);
+  it('retombe sur le front de production si la variable est absente ou vide', () => {
+    expect(parseAllowedOrigins(undefined)).toEqual(['https://vocabio.vercel.app']);
+    expect(parseAllowedOrigins('  ')).toEqual(['https://vocabio.vercel.app']);
   });
 });
 
