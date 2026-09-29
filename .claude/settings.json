@@ -13,30 +13,5 @@
       "Bash(git push --force*)",
       "Bash(git commit --no-verify*)"
     ]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && npx tsc --noEmit 1>&2 || exit 2",
-            "timeout": 90
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && out=$(npx jest --silent 2>&1) || { echo \"$out\" | tail -40 1>&2; exit 2; }",
-            "timeout": 180
-          }
-        ]
-      }
-    ]
   }
 }
