@@ -7,9 +7,12 @@
 // Les clients natifs (iOS/Android) ne sont pas concernés par CORS.
 //
 // Configuration : variable CORS_ORIGINS, liste séparée par des virgules.
-// ex: CORS_ORIGINS="http://localhost:8081,https://vocabio.app"
+// ex: CORS_ORIGINS="http://localhost:8081,https://vocabio.vercel.app"
+// Si elle est définie, elle REMPLACE la valeur par défaut (pas de fusion).
 
-const DEFAULT_ORIGINS = ['http://localhost:8081'];
+// Défaut = front de production, pour que la prod fonctionne sans configuration.
+// Le dev local (http://localhost:8081) doit être ajouté via CORS_ORIGINS.
+const DEFAULT_ORIGINS = ['https://vocabio.vercel.app'];
 
 export const parseAllowedOrigins = (raw: string | undefined): string[] => {
   const origins = (raw ?? '')

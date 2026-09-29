@@ -158,7 +158,9 @@ conversations sans avoir à les rejoindre. `user_typing` reste limité à la roo
 ### CORS
 
 Les appels depuis un navigateur (Expo web) nécessitent que l'origine figure dans
-`CORS_ORIGINS` (liste séparée par des virgules, défaut `http://localhost:8081`).
+`CORS_ORIGINS` (liste séparée par des virgules, défaut `https://vocabio.vercel.app`).
+Une valeur définie remplace le défaut : pour autoriser aussi le dev local, utiliser
+`CORS_ORIGINS="http://localhost:8081,https://vocabio.vercel.app"`.
 La même liste s'applique aux routes REST et à Socket.io.
 
 ---
