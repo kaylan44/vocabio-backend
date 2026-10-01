@@ -15,8 +15,8 @@ Decisions already taken with the developer:
 - **Granularity**: session + one row per answer (allows stats by word, category, level, time).
 - **Strict minimum fields**: only what the app knows today. No duration, no chosen option.
 - **Read side**: a single aggregated "summary" endpoint. No history endpoint for now.
-- **Scope**: this file covers the backend only. The mobile app part is outlined in
-  `stats-frontend.md`, to be done later in `vocabio2`.
+- **Scope**: this file covers the backend only. The mobile app part is done later in `vocabio2`.
+- **Rate limit**: at most one new session per user every 10 seconds.
 
 Facts that shape the design:
 
@@ -60,7 +60,6 @@ model QuizAnswer {
   session QuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, position])
-  @@index([wordId])
 }
 ```
 
@@ -73,9 +72,17 @@ Choices to explain in comments (developer is learning):
   `fr_es @map("fr-es")` plus a `fr-es` ↔ `fr_es` conversion in the service, and every new
   mode/level would need a migration. Trade-off accepted: the database itself does not reject
   an unknown value; the route is the only write path and validates it.
+  Known constraint: the allowed values live in `QUIZ_MODES` / `QUIZ_CATEGORIES` / `QUIZ_LEVELS`
+  (checked against the `vocabio2` vocabulary). A new mode, category or level in the app
+  requires the backend to be deployed **first**, otherwise the route answers 400 and the
+  quiz result is lost.
 - `score` / `total` are redundant with the answers but stored on the session so the common
   aggregates (average score, number of quizzes) do not need a join.
-- These are the first `@@index` of the project: stats always filter by `userId`.
+- `@@index([userId, createdAt])` is the first `@@index` of the project: stats always filter by
+  `userId`, and the rate limit reads the user's latest session.
+- No index on `QuizAnswer.wordId`: no query filters by `wordId` alone, they all go through
+  `session.userId`. `@@unique([sessionId, position])` already gives the index on `sessionId`
+  used by that join.
 - No `@@map`, camelCase columns: same convention as the existing tables.
 
 **Migration** (new folder, never touch the 3 existing ones):
@@ -103,20 +110,36 @@ Same style as `src/services/messageService.ts` (exported arrow functions, `prism
 `src/services/conversationService.ts`).
 
 - Exported constants: `QUIZ_MODES`, `QUIZ_CATEGORIES`, `QUIZ_LEVELS`, `MAX_ANSWERS_PER_SESSION = 50`,
-  `MOST_MISSED_LIMIT = 10` (shared with the route for validation).
+  `MOST_MISSED_LIMIT = 10`, `MIN_SECONDS_BETWEEN_SESSIONS = 10` (shared with the route for
+  validation).
+- Private helper `resolveExisting(sessionId, userId)`: `findUnique` on `sessionId`; returns
+  `null` when absent, the session when it belongs to `userId`, and throws 409 when it belongs
+  to someone else. It is the **only** place an existing session is read, so a session owned
+  by another user can never be returned (the 409 body carries a generic message, no data).
 - `createQuizSession(userId, sessionId, mode, answers)`:
-  1. `findUnique` on `sessionId`. If it exists and belongs to `userId` → return it with
-     `created: false` (replay). If it belongs to someone else → throw 409.
-  2. Otherwise compute `score` (count of `isCorrect`) and `total` (`answers.length`)
+  1. `resolveExisting`. Found → return it with `created: false` (replay).
+  2. Rate limit: `findFirst` of the user's most recent session (`orderBy: { createdAt: 'desc' }`,
+     served by `@@index([userId, createdAt])`). If it is younger than
+     `MIN_SECONDS_BETWEEN_SESSIONS` → throw 429. Done **after** step 1 on purpose: retrying the
+     same quiz must stay a `200`, never a `429`.
+  3. Compute `score` (count of `isCorrect`) and `total` (`answers.length`)
      **server-side** — the client never sends the score, so the two can never disagree.
-  3. `prisma.quizSession.create` with nested `answers: { create: [...] }` (`position` = array
+  4. `prisma.quizSession.create` with nested `answers: { create: [...] }` (`position` = array
      index). One query = atomic: no session without its answers.
-  4. Catch Prisma `P2002` (two identical requests racing) → re-read and return as a replay.
+  5. Catch Prisma `P2002` (two identical requests racing) → call `resolveExisting` again, so
+     the owner check also applies on this path (replay for the owner, 409 otherwise).
+
+  Rate limit choices to explain in comments: done in the database rather than with an
+  in-memory limiter (`express-rate-limit`) → no new dependency, survives restarts, still
+  correct with several instances. Known limit: check-then-create is not atomic, so two
+  requests with *different* ids sent at the same instant can both pass. Accepted: the goal is
+  to stop a loop from filling the table, not to be exact.
 - `getQuizStats(userId)`: runs in `Promise.all`
-  - `quizSession.groupBy({ by: ['mode'], where: { userId }, _count, _sum: { score, total }, _max: { score, createdAt } })`
+  - `quizSession.groupBy({ by: ['mode'], where: { userId }, _count, _sum: { score, total }, _max: { createdAt } })`
   - `quizAnswer.groupBy({ by: ['category', 'isCorrect'], where: { session: { userId } }, _count })`
   - same by `['level', 'isCorrect']`
-  - `quizAnswer.groupBy({ by: ['wordId'], where: { session: { userId }, isCorrect: false }, _count, orderBy: { _count: { wordId: 'desc' } }, take: MOST_MISSED_LIMIT })`
+  - `quizAnswer.groupBy({ by: ['wordId'], where: { session: { userId }, isCorrect: false }, _count, orderBy: [{ _count: { wordId: 'desc' } }, { wordId: 'asc' }], take: MOST_MISSED_LIMIT })`
+    (secondary sort on `wordId` so that ties are always returned in the same order)
 
   and shapes the result:
 
@@ -138,12 +161,18 @@ Same style as `src/services/messageService.ts` (exported arrow functions, `prism
 
 ## 3. Route — `src/routes/quizSessions.ts` (new)
 
-`router.use(authMiddleware)`, manual validation before the `try`, `handleError`
-(`src/utils/errors.ts`) in the `catch` — copy the shape of `src/routes/messages.ts`.
+`router.use(authMiddleware)`, manual validation, `handleError` (`src/utils/errors.ts`) in the
+`catch` — same shape as `src/routes/messages.ts`.
+
+Pitfall: with Express 4, an exception thrown in an `async` handler **outside** the `try` is an
+unhandled promise rejection (request hangs, Node may exit). The validation therefore must
+never throw: it lives in a pure helper `validateQuizSessionBody(body)` returning either an
+error message or the typed payload, and checks that a value is a non-null object **before**
+reading its fields (`{ "answers": [null] }` must give a 400, not a `TypeError`).
 
 | Method | Route | Behaviour |
 |---|---|---|
-| `POST` | `/quiz-sessions` | Body `{ id, mode, answers: [{ wordId, category, level, isCorrect }] }`. `201` when created, `200` on an idempotent replay. Returns `{ id, mode, score, total, createdAt }`. |
+| `POST` | `/quiz-sessions` | Body `{ id, mode, answers: [{ wordId, category, level, isCorrect }] }`. `201` when created, `200` on an idempotent replay, `409` if the id belongs to another user, `429` if the user created a session less than 10 s ago. Returns `{ id, mode, score, total, createdAt }`. |
 | `GET` | `/quiz-sessions/stats` | Aggregated statistics of `req.user.id` (shape above). |
 
 Validation (400 with `{ error }`, service not called):
@@ -151,9 +180,10 @@ Validation (400 with `{ error }`, service not called):
 - `id`: string matching a UUID regex.
 - `mode`: one of `QUIZ_MODES`.
 - `answers`: array, length 1..`MAX_ANSWERS_PER_SESSION`.
-- each answer: `wordId` non-empty string ≤ 20 chars, `category` in `QUIZ_CATEGORIES`,
-  `level` in `QUIZ_LEVELS`, `isCorrect` strictly a boolean.
-- no duplicated `wordId` inside one session (the app never repeats a word in a quiz).
+- each answer: a non-null object, `wordId` non-empty string ≤ 20 chars, `category` in
+  `QUIZ_CATEGORIES`, `level` in `QUIZ_LEVELS`, `isCorrect` strictly a boolean.
+- A repeated `wordId` inside one session is **allowed**: rejecting it would tie the backend to
+  how the app builds a quiz today (it may re-ask a missed word later).
 
 Security: the user id always comes from `req.user.id` (JWT), never from the body or the URL,
 so a user can neither write nor read someone else's stats. No `assertParticipant` here: no
@@ -166,15 +196,22 @@ Mount in `src/app.ts` next to the others: `app.use('/quiz-sessions', quizSession
 - `tests/services/quizService.test.ts` (Prisma mocked, pattern of `tests/services/messageService.test.ts`):
   - score/total computed from the answers, positions 0..n-1, `userId` set from the argument;
   - replay with same owner → existing session returned, `create` not called;
-  - existing id owned by another user → error with `statusCode` 409;
-  - `P2002` during create → treated as replay;
+  - existing id owned by another user → error with `statusCode` 409, `create` not called;
+  - `P2002` during create, session owned by the caller → treated as replay;
+  - `P2002` during create, session owned by another user → 409, nothing returned;
+  - last session younger than 10 s → error with `statusCode` 429, `create` not called;
+  - last session older than 10 s (or none) → created;
+  - replay of an existing id less than 10 s after its creation → replay, not 429;
   - `getQuizStats`: totals and accuracies computed from mocked `groupBy` rows; no session →
-    zeros, `accuracy: null`, empty arrays; every query is filtered by the given `userId`.
+    zeros, `accuracy: null`, empty arrays; every query is filtered by the given `userId`;
+    the most-missed query orders by wrong count then by `wordId`.
 - `tests/routes/quizSessions.test.ts` (supertest, auth + service mocked, pattern of
   `tests/routes/messages.test.ts`):
   - 201 on creation / 200 on replay, service called with `'user-1'`;
   - one 400 per validation rule, service not called;
-  - 409 propagated; plain `Error` → 500 with the generic message only;
+  - `answers: [null]` and a non-object body → 400 (no crash, no hanging request);
+  - a repeated `wordId` is accepted (201);
+  - 409 and 429 propagated; plain `Error` → 500 with the generic message only;
   - `GET /quiz-sessions/stats` → 200 with the service payload.
 - `tests/prisma/rls.test.ts` already covers the new migration, nothing to add.
 
@@ -183,8 +220,8 @@ Everything stays mocked: no test against a real database.
 ## 5. Docs
 
 - `README.md`: two `### "QuizSession" table` / `### "QuizAnswer" table` subsections under
-  "Data model", two rows in the "Endpoints" table, and a short note on idempotency and on
-  client-trusted results.
+  "Data model", two rows in the "Endpoints" table, and a short note on idempotency, on the
+  10-second rate limit (429) and on client-trusted results.
 - `PLAN.md`: add `## Step 6 — Quiz results & statistics` (same layout as the other steps) and
   the rows in "Architecture decisions — Summary" (String vs enum, client-generated id,
   denormalised category/level).
@@ -216,7 +253,8 @@ Manual end-to-end check (developer, with a real Supabase JWT in `$TOKEN`, server
 curl -i -X POST http://localhost:3000/quiz-sessions -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"id":"3f2b1c7e-8a54-4d2f-9b1a-0c5d6e7f8a90","mode":"fr-es","answers":[{"wordId":"n001","category":"noun","level":"A1","isCorrect":true},{"wordId":"v042","category":"verb","level":"A2","isCorrect":false}]}'
 ```
 
-Expected `201`; running it a second time returns `200` and no new row.
+Expected `201`; running it a second time returns `200` and no new row. Running it again
+within 10 seconds with a **different** `id` returns `429`.
 
 ```bash
 curl -s http://localhost:3000/quiz-sessions/stats -H "Authorization: Bearer $TOKEN"
@@ -225,5 +263,5 @@ curl -s http://localhost:3000/quiz-sessions/stats -H "Authorization: Bearer $TOK
 Expected `totalSessions: 1`, `totalAnswers: 2`, `accuracy: 0.5`, `v042` in `mostMissedWords`.
 (Adapt the port to the local `PORT` value.)
 
-Open point to check before merging: how migrations are applied on Railway
-(`prisma migrate deploy` in the start/build command, or by hand).
+Deployment: `railway.toml` runs `npx prisma migrate deploy` at every container start, so
+merging the PR applies the migration to production automatically.
