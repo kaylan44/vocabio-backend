@@ -31,10 +31,15 @@ Functional details: `README.md`. Historical implementation plan: `PLAN.md`.
 - **Singletons**: Prisma via `src/lib/prisma.ts`, Socket.io via `getIO()` from `src/lib/socket.ts`.
 - **Prisma migrations**: never modify a migration that has already been applied
   (`prisma/migrations/*`). Always create a new migration.
-- **Style**: strict TypeScript. Existing code comments are in French; match the
-  language of the file you are editing.
+- **Style**: strict TypeScript.
   The developer is learning: **comment the "why" generously**
   (choices, rejected alternatives, pitfalls), not just the "what".
+- **Language**: everything written from now on is in English: documentation,
+  `.md` files, new code comments, commit messages, PR titles and descriptions.
+  This applies to new content only. Many existing code comments are in French:
+  leave them as they are. Never translate or rewrite existing content just
+  because you are editing the file; a small change must stay a small diff.
+  Translating an existing file is a task of its own, done only on request.
 
 ## Commands
 
