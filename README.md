@@ -1,26 +1,26 @@
-# Vocabio — Architecture Messagerie 1:1
+# Vocabio — 1:1 Messaging Architecture
 
-## Vue d'ensemble
+## Overview
 
-Système de messagerie instantanée entre utilisateurs de l'application Vocabio. Périmètre : conversations 1:1, messages texte, indicateurs de lecture, temps réel.
+Instant messaging system between users of the Vocabio application. Scope: 1:1 conversations, text messages, read indicators, real time.
 
 ---
 
-## Stack technique
+## Tech stack
 
-| Couche | Technologie | Rôle |
+| Layer | Technology | Role |
 |---|---|---|
-| Mobile | React Native | Client iOS / Android |
-| Auth | Supabase Auth | Google SSO, émission de JWTs |
-| Base de données | Supabase PostgreSQL | Persistance des données |
-| ORM | Prisma | Schéma typé, migrations |
-| Serveur API | Node.js + Express | REST endpoints, logique métier |
-| Temps réel | Socket.io | WebSockets, livraison des messages |
-| Hébergement serveur | Railway | Déploiement Express + Socket.io |
+| Mobile | React Native | iOS / Android client |
+| Auth | Supabase Auth | Google SSO, JWT issuance |
+| Database | Supabase PostgreSQL | Data persistence |
+| ORM | Prisma | Typed schema, migrations |
+| API server | Node.js + Express | REST endpoints, business logic |
+| Real time | Socket.io | WebSockets, message delivery |
+| Server hosting | Railway | Express + Socket.io deployment |
 
 ---
 
-## Architecture générale
+## General architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -42,35 +42,35 @@ Système de messagerie instantanée entre utilisateurs de l'application Vocabio.
 
 ---
 
-## Flux d'authentification
+## Authentication flow
 
-1. L'utilisateur se connecte via **Google SSO** sur Supabase Auth
-2. Supabase retourne un **JWT signé** contenant l'`user_id`
-3. React Native stocke le JWT de manière sécurisée (`expo-secure-store`)
-4. Chaque requête HTTP et connexion Socket.io inclut le JWT en header
-5. Le serveur Express **vérifie le JWT** avec la clé publique Supabase (sans appel réseau)
-6. L'identité de l'utilisateur est extraite du token à chaque requête
+1. The user signs in through **Google SSO** on Supabase Auth
+2. Supabase returns a **signed JWT** containing the `user_id`
+3. React Native stores the JWT securely (`expo-secure-store`)
+4. Every HTTP request and Socket.io connection includes the JWT in a header
+5. The Express server **verifies the JWT** with the Supabase public key (no network call)
+6. The user's identity is extracted from the token on every request
 
 ---
 
-## Modèle de données
+## Data model
 
-### Table `users`
-Synchronisée depuis Supabase Auth par un trigger Postgres sur `auth.users` (migration
-`sync_auth_users`, qui rattrape aussi les comptes existants). L'upsert lazy du middleware auth
-et le webhook d'inscription restent en filet de sécurité.
+### `users` table
+Synchronized from Supabase Auth by a Postgres trigger on `auth.users` (`sync_auth_users`
+migration, which also backfills existing accounts). The lazy upsert in the auth middleware
+and the sign-up webhook remain as a safety net.
 
 ```sql
 users (
-  id          UUID PRIMARY KEY,  -- même ID que Supabase Auth
+  id          UUID PRIMARY KEY,  -- same ID as Supabase Auth
   username    TEXT NOT NULL,
   avatar_url  TEXT,
   created_at  TIMESTAMP DEFAULT NOW()
 )
 ```
 
-### Table `conversations`
-Représente un canal 1:1 entre deux utilisateurs.
+### `conversations` table
+Represents a 1:1 channel between two users.
 
 ```sql
 conversations (
@@ -79,8 +79,8 @@ conversations (
 )
 ```
 
-### Table `participants`
-Table pivot liant utilisateurs et conversations.
+### `participants` table
+Join table linking users and conversations.
 
 ```sql
 participants (
@@ -90,7 +90,7 @@ participants (
 )
 ```
 
-### Table `messages`
+### `messages` table
 ```sql
 messages (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -98,121 +98,121 @@ messages (
   sender_id        UUID REFERENCES users(id),
   content          TEXT NOT NULL,
   created_at       TIMESTAMP DEFAULT NOW(),
-  read_at          TIMESTAMP  -- NULL = non lu
+  read_at          TIMESTAMP  -- NULL = unread
 )
 ```
 
 ---
 
-## API REST (Express)
+## REST API (Express)
 
 ### Auth
-Tous les endpoints requièrent le header `Authorization: Bearer <JWT>`.
+All endpoints require the `Authorization: Bearer <JWT>` header.
 
 ### Endpoints
 
-| Méthode | Route | Description |
+| Method | Route | Description |
 |---|---|---|
-| `GET` | `/users` | Lister les utilisateurs (sauf soi-même), triés par username, 100 max |
-| `GET` | `/users/search?q=` | Rechercher un utilisateur par username |
-| `POST` | `/conversations` | Créer ou récupérer une conversation 1:1 |
-| `GET` | `/conversations` | Lister les conversations de l'utilisateur |
-| `GET` | `/conversations/:id/messages` | Historique paginé des messages |
-| `POST` | `/conversations/:id/messages` | Envoyer un message (fallback sans WebSocket) |
-| `PATCH` | `/messages/:id/read` | Marquer un message comme lu |
+| `GET` | `/users` | List users (except yourself), sorted by username, 100 max |
+| `GET` | `/users/search?q=` | Search for a user by username |
+| `POST` | `/conversations` | Create or fetch a 1:1 conversation |
+| `GET` | `/conversations` | List the user's conversations |
+| `GET` | `/conversations/:id/messages` | Paginated message history |
+| `POST` | `/conversations/:id/messages` | Send a message (fallback without WebSocket) |
+| `PATCH` | `/messages/:id/read` | Mark a message as read |
 
 ---
 
-## Événements Socket.io (temps réel)
+## Socket.io events (real time)
 
-### Connexion
-Le client s'authentifie à la connexion en passant le JWT :
+### Connection
+The client authenticates on connection by passing the JWT:
 ```js
 const socket = io(SERVER_URL, {
   auth: { token: supabaseJWT }
 })
 ```
 
-### Événements client → serveur
+### Client → server events
 
-| Événement | Payload | Description |
+| Event | Payload | Description |
 |---|---|---|
-| `join_conversation` | `{ conversationId }` | Rejoindre la room d'une conversation |
-| `send_message` | `{ conversationId, content }` | Envoyer un message |
-| `mark_read` | `{ conversationId }` | Marquer tous les messages reçus de la conversation comme lus |
-| `typing` | `{ conversationId }` | Indicateur de saisie |
+| `join_conversation` | `{ conversationId }` | Join a conversation's room |
+| `send_message` | `{ conversationId, content }` | Send a message |
+| `mark_read` | `{ conversationId }` | Mark all received messages of the conversation as read |
+| `typing` | `{ conversationId }` | Typing indicator |
 
-### Événements serveur → client
+### Server → client events
 
-À la connexion, chaque socket rejoint automatiquement sa room personnelle `user:<id>`.
-`new_message` et `message_read` sont émis à la room de la conversation **et** aux rooms
-personnelles des participants : un client reçoit donc les nouveaux messages de toutes ses
-conversations sans avoir à les rejoindre. `user_typing` reste limité à la room de la conversation.
+On connection, each socket automatically joins its personal room `user:<id>`.
+`new_message` and `message_read` are emitted to the conversation room **and** to the
+participants' personal rooms: a client therefore receives new messages from all its
+conversations without having to join them. `user_typing` stays limited to the conversation room.
 
-| Événement | Payload | Description |
+| Event | Payload | Description |
 |---|---|---|
-| `new_message` | `{ id, conversationId, senderId, sender, content, createdAt, readAt }` | Nouveau message (y compris ceux envoyés par soi-même) |
-| `message_read` | `{ conversationId, readAt, readByUserId }` | Messages de la conversation lus par `readByUserId` |
-| `user_typing` | `{ conversationId, userId, username }` | Un utilisateur est en train d'écrire |
+| `new_message` | `{ id, conversationId, senderId, sender, content, createdAt, readAt }` | New message (including the ones you sent yourself) |
+| `message_read` | `{ conversationId, readAt, readByUserId }` | Messages of the conversation read by `readByUserId` |
+| `user_typing` | `{ conversationId, userId, username }` | A user is typing |
 
 ### CORS
 
-Les appels depuis un navigateur (Expo web) nécessitent que l'origine figure dans
-`CORS_ORIGINS` (liste séparée par des virgules, défaut `https://vocabio.vercel.app`).
-Une valeur définie remplace le défaut : pour autoriser aussi le dev local, utiliser
+Calls from a browser (Expo web) require the origin to be listed in
+`CORS_ORIGINS` (comma-separated list, default `https://vocabio.vercel.app`).
+A defined value replaces the default: to also allow local dev, use
 `CORS_ORIGINS="http://localhost:8081,https://vocabio.vercel.app"`.
-La même liste s'applique aux routes REST et à Socket.io.
+The same list applies to REST routes and to Socket.io.
 
 ---
 
-## Sécurité
+## Security
 
-- Tous les endpoints vérifient le JWT Supabase avant traitement
-- Vérification côté serveur que l'utilisateur est bien **participant** de la conversation avant tout accès aux messages
-- Le JWT est vérifié en local (clé publique Supabase) — pas d'appel réseau à Supabase à chaque requête
-- Les messages ne sont accessibles qu'aux participants de la conversation
-- **RLS activé sans policy** sur toutes les tables de `public` (migration `enable_rls`) :
-  le Data API Supabase (PostgREST, clé `anon`) n'y a aucun accès, le mobile passe
-  uniquement par ce backend. Prisma se connecte en `postgres` (propriétaire des tables)
-  et n'est donc pas soumis au RLS. **Toute nouvelle table doit activer le RLS dans sa
-  migration** (vérifié par `tests/prisma/rls.test.ts`).
-
----
-
-## Plan de développement
-
-### Étape 1 — Setup & Auth
-- Initialiser le projet Express + TypeScript
-- Configurer Prisma + connexion Supabase PostgreSQL
-- Middleware de vérification JWT Supabase
-- Webhook Supabase → création utilisateur en base
-- Déploiement Railway
-
-### Étape 2 — Conversations & Messages (REST)
-- Endpoints de gestion des conversations
-- Endpoint d'envoi et récupération des messages
-- Pagination de l'historique
-
-### Étape 3 — Temps réel (Socket.io)
-- Authentification Socket.io via JWT
-- Rooms par conversation
-- Livraison temps réel des messages
-
-### Étape 4 — Read receipts & UX
-- Marquage des messages comme lus
-- Notification à l'expéditeur via Socket.io
-- Indicateur de frappe (typing indicator)
-
-### Étape 5 — Notifications push (optionnel)
-- Intégration Expo Push Notifications
-- Envoi de notification quand le destinataire est hors ligne
+- All endpoints verify the Supabase JWT before processing
+- Server-side check that the user is indeed a **participant** of the conversation before any access to messages
+- The JWT is verified locally (Supabase public key) — no network call to Supabase on each request
+- Messages are only accessible to the participants of the conversation
+- **RLS enabled with no policy** on all `public` tables (`enable_rls` migration):
+  the Supabase Data API (PostgREST, `anon` key) has no access to them, the mobile app
+  only goes through this backend. Prisma connects as `postgres` (owner of the tables)
+  and is therefore not subject to RLS. **Any new table must enable RLS in its
+  migration** (checked by `tests/prisma/rls.test.ts`).
 
 ---
 
-## Ce qui est hors périmètre (V1)
+## Development plan
 
-- Messages groupes (> 2 participants)
-- Partage de fichiers / images
-- Chiffrement end-to-end
-- Suppression / édition de messages
-- Réactions aux messages
+### Step 1 — Setup & Auth
+- Initialize the Express + TypeScript project
+- Configure Prisma + Supabase PostgreSQL connection
+- Supabase JWT verification middleware
+- Supabase webhook → user creation in the database
+- Railway deployment
+
+### Step 2 — Conversations & Messages (REST)
+- Conversation management endpoints
+- Endpoint for sending and fetching messages
+- History pagination
+
+### Step 3 — Real time (Socket.io)
+- Socket.io authentication via JWT
+- One room per conversation
+- Real-time message delivery
+
+### Step 4 — Read receipts & UX
+- Marking messages as read
+- Notifying the sender through Socket.io
+- Typing indicator
+
+### Step 5 — Push notifications (optional)
+- Expo Push Notifications integration
+- Sending a notification when the recipient is offline
+
+---
+
+## Out of scope (V1)
+
+- Group messages (> 2 participants)
+- File / image sharing
+- End-to-end encryption
+- Deleting / editing messages
+- Message reactions

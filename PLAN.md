@@ -1,31 +1,31 @@
-# Plan d'implémentation — Vocabio Messagerie 1:1
+# Implementation plan — Vocabio 1:1 Messaging
 
-## Structure du repo
+## Repo structure
 
 ```
 vocabio-backend/
 ├── src/
 │   ├── middleware/
-│   │   └── auth.ts                 # Vérification JWT + upsert lazy du user
+│   │   └── auth.ts                 # JWT verification + lazy user upsert
 │   ├── routes/
 │   │   ├── users.ts                # GET /users/search
 │   │   ├── conversations.ts        # GET/POST /conversations
 │   │   └── messages.ts             # GET/POST/PATCH messages
 │   ├── services/
-│   │   ├── userService.ts          # Logique métier users (upsert, search)
-│   │   ├── conversationService.ts  # Logique métier conversations
-│   │   └── messageService.ts       # Logique métier messages (createMessage partagé REST + Socket)
+│   │   ├── userService.ts          # Users business logic (upsert, search)
+│   │   ├── conversationService.ts  # Conversations business logic
+│   │   └── messageService.ts       # Messages business logic (createMessage shared by REST + Socket)
 │   ├── sockets/
-│   │   ├── index.ts                # Init Socket.io, auth handshake
-│   │   └── handlers.ts             # Handlers des événements Socket
+│   │   ├── index.ts                # Socket.io init, auth handshake
+│   │   └── handlers.ts             # Socket event handlers
 │   ├── lib/
-│   │   ├── prisma.ts               # Instance Prisma singleton
-│   │   └── socket.ts               # Instance Socket.io singleton (partagée entre routes et services)
+│   │   ├── prisma.ts               # Prisma singleton instance
+│   │   └── socket.ts               # Socket.io singleton instance (shared between routes and services)
 │   ├── types/
-│   │   └── index.ts                # Types partagés (AuthUser, etc.)
-│   └── app.ts                      # Setup Express + Socket.io
+│   │   └── index.ts                # Shared types (AuthUser, etc.)
+│   └── app.ts                      # Express + Socket.io setup
 ├── prisma/
-│   └── schema.prisma               # Schéma BDD
+│   └── schema.prisma               # Database schema
 ├── tests/
 │   ├── middleware/
 │   │   └── auth.test.ts
@@ -44,26 +44,26 @@ vocabio-backend/
 
 ---
 
-## Étape 1 — Setup & Auth
+## Step 1 — Setup & Auth
 
-**Branche :** `feat/setup-auth`
+**Branch:** `feat/setup-auth`
 
 ### Packages
 
-| Package | Rôle |
+| Package | Role |
 |---|---|
-| `express` | Serveur HTTP |
+| `express` | HTTP server |
 | `socket.io` | WebSockets |
 | `prisma`, `@prisma/client` | ORM + migrations |
-| `jsonwebtoken`, `jwks-rsa` | Vérification JWT Supabase (clé publique JWKS, mise en cache) |
-| `typescript`, `tsx` | Transpilation TypeScript |
+| `jsonwebtoken`, `jwks-rsa` | Supabase JWT verification (JWKS public key, cached) |
+| `typescript`, `tsx` | TypeScript transpilation |
 | `jest`, `ts-jest`, `supertest` | Tests |
 
-### Schéma Prisma (`prisma/schema.prisma`)
+### Prisma schema (`prisma/schema.prisma`)
 
 ```prisma
 model User {
-  id            String         @id           // UUID identique à Supabase Auth
+  id            String         @id           // Same UUID as Supabase Auth
   username      String
   avatarUrl     String?
   createdAt     DateTime       @default(now())
@@ -92,42 +92,42 @@ model Message {
   senderId        String
   content         String
   createdAt       DateTime     @default(now())
-  readAt          DateTime?    // NULL = non lu
+  readAt          DateTime?    // NULL = unread
   conversation    Conversation @relation(fields: [conversationId], references: [id])
   sender          User         @relation(fields: [senderId], references: [id])
 }
 ```
 
-### Middleware auth (`src/middleware/auth.ts`)
+### Auth middleware (`src/middleware/auth.ts`)
 
-Exécuté sur toutes les requêtes protégées, dans l'ordre :
+Runs on every protected request, in this order:
 
-1. Extrait le JWT du header `Authorization: Bearer <token>`
-2. Vérifie la signature avec la clé publique Supabase via JWKS (l'endpoint JWKS Supabase est mis en cache côté `jwks-rsa` — pas d'appel réseau à chaque requête)
-3. Extrait `sub` (= user_id Supabase), `email`, `user_metadata.username` du payload JWT
-4. **Upsert lazy** : `prisma.user.upsert({ where: { id: sub }, create: { id, username, email }, update: {} })`
-   - Si le user existe déjà → no-op (le `update: {}` ne modifie rien)
-   - Si le user n'existe pas (webhook raté) → il est créé silencieusement ici
-5. Attache l'objet user à `req.user` pour tous les handlers suivants
+1. Extracts the JWT from the `Authorization: Bearer <token>` header
+2. Verifies the signature with the Supabase public key via JWKS (the Supabase JWKS endpoint is cached by `jwks-rsa` — no network call on each request)
+3. Extracts `sub` (= Supabase user_id), `email`, `user_metadata.username` from the JWT payload
+4. **Lazy upsert**: `prisma.user.upsert({ where: { id: sub }, create: { id, username, email }, update: {} })`
+   - If the user already exists → no-op (`update: {}` changes nothing)
+   - If the user does not exist (missed webhook) → it is silently created here
+5. Attaches the user object to `req.user` for all following handlers
 
-### Webhook Supabase (`POST /webhooks/auth`)
+### Supabase webhook (`POST /webhooks/auth`)
 
-- Reçoit un événement `INSERT` sur `auth.users` à chaque inscription
-- Vérifie la signature HMAC du webhook (secret configuré dans Supabase Dashboard)
-- Fait le même upsert que le middleware
-- **Non critique** : si ce webhook échoue, l'upsert lazy dans le middleware rattrape au premier appel API de l'user
+- Receives an `INSERT` event on `auth.users` at each sign-up
+- Verifies the webhook's HMAC signature (secret configured in the Supabase Dashboard)
+- Performs the same upsert as the middleware
+- **Non-critical**: if this webhook fails, the lazy upsert in the middleware catches up on the user's first API call
 
-### Types partagés (`src/types/index.ts`)
+### Shared types (`src/types/index.ts`)
 
 ```typescript
-// Représente l'utilisateur authentifié, attaché à req.user par le middleware
+// Represents the authenticated user, attached to req.user by the middleware
 export interface AuthUser {
   id: string;
   username: string;
   email: string;
 }
 
-// Extension du type Request d'Express pour inclure req.user
+// Extends Express's Request type to include req.user
 declare global {
   namespace Express {
     interface Request {
@@ -139,46 +139,46 @@ declare global {
 
 ---
 
-## Étape 2 — Conversations & Messages (REST)
+## Step 2 — Conversations & Messages (REST)
 
-**Branche :** `feat/rest-api`
+**Branch:** `feat/rest-api`
 
 ### `POST /conversations`
 
-**Payload :** `{ recipientId: string }`
+**Payload:** `{ recipientId: string }`
 
-**Logique dans `conversationService.getOrCreate(userId, recipientId)` :**
+**Logic in `conversationService.getOrCreate(userId, recipientId)`:**
 
 ```
-1. Requête SQL : cherche une conversation où userId ET recipientId
-   sont tous les deux participants (jointure sur participants)
-2. Si trouvée → retourne la conversation existante (idempotent)
-3. Si non trouvée →
-   a. Crée une nouvelle Conversation
-   b. Crée deux lignes Participant (userId + recipientId)
-   c. Retourne la nouvelle conversation
+1. SQL query: look for a conversation where userId AND recipientId
+   are both participants (join on participants)
+2. If found → return the existing conversation (idempotent)
+3. If not found →
+   a. Create a new Conversation
+   b. Create two Participant rows (userId + recipientId)
+   c. Return the new conversation
 ```
 
-**Pourquoi idempotent ?** Le client mobile peut appeler cet endpoint plusieurs fois (réseau instable, retry) sans créer de doublons.
+**Why idempotent?** The mobile client may call this endpoint several times (unstable network, retry) without creating duplicates.
 
 ### `GET /conversations`
 
-Retourne la liste des conversations de l'user connecté, triées par date du dernier message.
+Returns the list of the logged-in user's conversations, sorted by the date of the last message.
 
-**Pour chaque conversation :**
-- L'autre participant : `username`, `avatarUrl`
-- Le dernier message : `content`, `createdAt`, `senderId`
-- Le nombre de messages non lus : `COUNT(*) WHERE read_at IS NULL AND sender_id != userId`
+**For each conversation:**
+- The other participant: `username`, `avatarUrl`
+- The last message: `content`, `createdAt`, `senderId`
+- The number of unread messages: `COUNT(*) WHERE read_at IS NULL AND sender_id != userId`
 
-> ⚠️ **Point de complexité :** cette requête combine plusieurs agrégations (dernier message + count non lus) pour N conversations en une passe. Prisma ORM seul ne le supporte pas proprement. Stratégie : tenter d'abord avec Prisma (plusieurs requêtes assemblées en service), et si les performances sont insuffisantes, basculer sur `prisma.$queryRaw` avec du SQL brut.
+> ⚠️ **Complexity point:** this query combines several aggregations (last message + unread count) for N conversations in one pass. Prisma ORM alone does not support this cleanly. Strategy: first try with Prisma (several queries assembled in the service), and if performance is insufficient, switch to `prisma.$queryRaw` with raw SQL.
 
 ### `GET /conversations/:id/messages?offset=0&limit=30`
 
-**Guard participant** (réutilisé sur tous les endpoints `/conversations/:id/*`) :
-- Vérifie qu'une ligne `Participant` existe pour `(conversationId, userId)`
-- Si non → 403 Forbidden
+**Participant guard** (reused on all `/conversations/:id/*` endpoints):
+- Checks that a `Participant` row exists for `(conversationId, userId)`
+- If not → 403 Forbidden
 
-**Pagination offset :**
+**Offset pagination:**
 ```
 prisma.message.findMany({
   where: { conversationId },
@@ -187,45 +187,45 @@ prisma.message.findMany({
   take: limit
 })
 ```
-Les messages sont renvoyés du plus récent au plus ancien (l'app mobile inverse l'ordre à l'affichage).
+Messages are returned from most recent to oldest (the mobile app reverses the order for display).
 
 ### `POST /conversations/:id/messages`
 
-**Payload :** `{ content: string }`
+**Payload:** `{ content: string }`
 
-Appelle `messageService.createMessage(conversationId, senderId, content)`.
+Calls `messageService.createMessage(conversationId, senderId, content)`.
 
-**Cette fonction est partagée entre REST et Socket.io — c'est la règle centrale de l'architecture :**
+**This function is shared between REST and Socket.io — it is the core rule of the architecture:**
 ```
-1. Persiste le message en base (Prisma)
-2. Émet l'événement new_message sur la room Socket.io de la conversation
-3. Retourne le message créé
+1. Persists the message in the database (Prisma)
+2. Emits the new_message event on the conversation's Socket.io room
+3. Returns the created message
 ```
-Ainsi, qu'un message arrive par HTTP ou par WebSocket, le comportement est identique.
+This way, whether a message arrives over HTTP or over WebSocket, the behavior is identical.
 
 ### `PATCH /conversations/:id/read`
 
-Marque **tous** les messages non lus de la conversation comme lus en une seule requête :
+Marks **all** unread messages of the conversation as read in a single query:
 
 ```sql
 UPDATE messages
 SET read_at = NOW()
 WHERE conversation_id = :id
-  AND sender_id != :userId   -- on ne marque pas ses propres messages
+  AND sender_id != :userId   -- we do not mark our own messages
   AND read_at IS NULL
 ```
 
-Après la mise à jour, émet un événement `message_read` en Socket.io pour notifier l'expéditeur que ses messages ont été lus.
+After the update, emits a `message_read` Socket.io event to notify the sender that their messages have been read.
 
 ---
 
-## Étape 3 — Temps réel (Socket.io)
+## Step 3 — Real time (Socket.io)
 
-**Branche :** `feat/realtime`
+**Branch:** `feat/realtime`
 
-### Singleton Socket.io (`src/lib/socket.ts`)
+### Socket.io singleton (`src/lib/socket.ts`)
 
-`messageService` doit émettre des événements Socket.io, mais importer `io` directement depuis `sockets/index.ts` créerait un couplage circulaire. La solution : un module singleton initialisé une fois au démarrage du serveur, puis importé par n'importe quel service.
+`messageService` must emit Socket.io events, but importing `io` directly from `sockets/index.ts` would create a circular dependency. The solution: a singleton module initialized once at server startup, then imported by any service.
 
 ```typescript
 // src/lib/socket.ts
@@ -235,118 +235,118 @@ export const getIO = () => { if (!io) throw new Error('Socket.io non initialisé
 ```
 
 ```typescript
-// messageService.ts peut alors faire :
+// messageService.ts can then do:
 import { getIO } from '../lib/socket';
 getIO().to(conversationId).emit('new_message', message);
 ```
 
-### Architecture Express + Socket.io
+### Express + Socket.io architecture
 
-Express et Socket.io partagent le même serveur HTTP Node.js :
+Express and Socket.io share the same Node.js HTTP server:
 
 ```typescript
 const app = express();
 const httpServer = http.createServer(app);
 const io = new Server(httpServer);
-// → un seul port, deux protocoles (HTTP + WS)
+// → a single port, two protocols (HTTP + WS)
 ```
 
 ### Auth handshake (`src/sockets/index.ts`)
 
-Middleware Socket.io exécuté à chaque nouvelle connexion WebSocket :
+Socket.io middleware run on every new WebSocket connection:
 
 ```
-1. Extrait le JWT depuis socket.handshake.auth.token
-2. Vérifie la signature (même logique que le middleware HTTP)
-3. Upsert lazy du user
-4. Attache l'user à socket.data.user
-5. Si JWT invalide → socket.disconnect()
+1. Extracts the JWT from socket.handshake.auth.token
+2. Verifies the signature (same logic as the HTTP middleware)
+3. Lazy upsert of the user
+4. Attaches the user to socket.data.user
+5. If the JWT is invalid → socket.disconnect()
 ```
 
-### Handlers Socket (`src/sockets/handlers.ts`)
+### Socket handlers (`src/sockets/handlers.ts`)
 
-| Événement reçu | Payload | Action serveur | Événement émis |
+| Received event | Payload | Server action | Emitted event |
 |---|---|---|---|
-| `join_conversation` | `{ conversationId }` | Vérifie participation → `socket.join(conversationId)` | — |
-| `send_message` | `{ conversationId, content }` | Appelle `messageService.createMessage(...)` | `new_message` → room |
-| `mark_read` | `{ conversationId }` | Met à jour `read_at` en masse | `message_read` → room |
-| `typing` | `{ conversationId }` | — | `user_typing` → room (broadcast sauf émetteur) |
+| `join_conversation` | `{ conversationId }` | Checks participation → `socket.join(conversationId)` | — |
+| `send_message` | `{ conversationId, content }` | Calls `messageService.createMessage(...)` | `new_message` → room |
+| `mark_read` | `{ conversationId }` | Bulk-updates `read_at` | `message_read` → room |
+| `typing` | `{ conversationId }` | — | `user_typing` → room (broadcast except sender) |
 
-### Événements serveur → client
+### Server → client events
 
-| Événement | Payload | Destinataire |
+| Event | Payload | Recipient |
 |---|---|---|
-| `new_message` | `{ id, conversationId, senderId, content, createdAt }` | Tous les membres de la room |
-| `message_read` | `{ conversationId, readAt }` | Tous les membres de la room |
-| `user_typing` | `{ conversationId, userId }` | Tous sauf l'émetteur |
+| `new_message` | `{ id, conversationId, senderId, content, createdAt }` | All members of the room |
+| `message_read` | `{ conversationId, readAt }` | All members of the room |
+| `user_typing` | `{ conversationId, userId }` | Everyone except the sender |
 
 ---
 
-## Étape 4 — Read receipts & Typing indicator
+## Step 4 — Read receipts & Typing indicator
 
-**Branche :** `feat/read-receipts`
+**Branch:** `feat/read-receipts`
 
-Inclus dans l'étape 3 ci-dessus. Points d'attention :
+Included in step 3 above. Points to watch:
 
-- **`mark_read` en masse** : le client appelle `mark_read` quand l'utilisateur ouvre une conversation, pas message par message. Une seule requête SQL, un seul événement Socket.
-- **`typing`** : événement éphémère, rien n'est persisté en base. Le client envoie `typing` à chaque frappe (throttlé côté mobile). Le serveur rebroadcast immédiatement.
-
----
-
-## Étape 5 — Tests unitaires
-
-**Branche :** `feat/tests`
-
-### Stratégie de mock
-
-Les services sont testés avec Prisma mocké via `jest.mock('../lib/prisma')`. Les routes sont testées avec `supertest` + un mock du middleware auth (qui injecte un `req.user` fictif).
-
-### Couverture cible
-
-**Middleware auth (`tests/middleware/auth.test.ts`) :**
-- JWT valide → `req.user` rempli, user upserted
-- JWT expiré → 401
-- Header absent → 401
-- User absent de la base avant upsert → créé automatiquement
-
-**`conversationService` (`tests/services/conversationService.test.ts`) :**
-- `getOrCreate` avec conversation existante → retourne l'existante (idempotent)
-- `getOrCreate` sans conversation → crée conv + 2 participants
-- `getOrCreate` avec un recipientId inexistant → erreur métier
-
-**`messageService` (`tests/services/messageService.test.ts`) :**
-- `createMessage` → persiste en base ET émet `new_message` sur Socket.io
-- `createMessage` dans une conversation dont on n'est pas participant → rejeté
-
-> ⚠️ **Point de complexité :** tester l'émission Socket.io nécessite de mocker `getIO()` via `jest.mock('../lib/socket')` et de vérifier que `.to().emit()` a bien été appelé avec les bons arguments. La config Jest devra inclure un mock de ce module.
-
-**`userService` (`tests/services/userService.test.ts`) :**
-- `searchUsers` → retourne les users dont le username matche
-- `searchUsers` avec query vide → retourne rien (ou erreur de validation)
-
-**Routes REST (`tests/routes/`) :**
-- Scénario E2E : créer conv → envoyer message → récupérer historique → marquer comme lu → vérifier `read_at` non null
+- **Bulk `mark_read`**: the client calls `mark_read` when the user opens a conversation, not message by message. A single SQL query, a single Socket event.
+- **`typing`**: ephemeral event, nothing is persisted in the database. The client sends `typing` on each keystroke (throttled on the mobile side). The server rebroadcasts immediately.
 
 ---
 
-## Décisions d'architecture — Résumé
+## Step 5 — Unit tests
 
-| Décision | Choix | Raison |
+**Branch:** `feat/tests`
+
+### Mocking strategy
+
+Services are tested with Prisma mocked via `jest.mock('../lib/prisma')`. Routes are tested with `supertest` + a mock of the auth middleware (which injects a fake `req.user`).
+
+### Target coverage
+
+**Auth middleware (`tests/middleware/auth.test.ts`):**
+- Valid JWT → `req.user` filled, user upserted
+- Expired JWT → 401
+- Missing header → 401
+- User absent from the database before the upsert → created automatically
+
+**`conversationService` (`tests/services/conversationService.test.ts`):**
+- `getOrCreate` with an existing conversation → returns the existing one (idempotent)
+- `getOrCreate` with no conversation → creates the conversation + 2 participants
+- `getOrCreate` with a non-existent recipientId → business error
+
+**`messageService` (`tests/services/messageService.test.ts`):**
+- `createMessage` → persists in the database AND emits `new_message` on Socket.io
+- `createMessage` in a conversation you are not a participant of → rejected
+
+> ⚠️ **Complexity point:** testing the Socket.io emission requires mocking `getIO()` via `jest.mock('../lib/socket')` and checking that `.to().emit()` was called with the right arguments. The Jest config will need to include a mock of this module.
+
+**`userService` (`tests/services/userService.test.ts`):**
+- `searchUsers` → returns the users whose username matches
+- `searchUsers` with an empty query → returns nothing (or a validation error)
+
+**REST routes (`tests/routes/`):**
+- E2E scenario: create conversation → send message → fetch history → mark as read → check `read_at` is not null
+
+---
+
+## Architecture decisions — Summary
+
+| Decision | Choice | Reason |
 |---|---|---|
-| Sync users | Upsert lazy dans le middleware | Résilience si webhook Supabase échoue |
-| REST + Socket | `createMessage` partagé | Single source of truth, pas de divergence |
-| Marquer lu | Par conversation (bulk) | Évite N requêtes à l'ouverture d'un chat |
-| Pagination | Offset | Plus simple, suffisant pour V1 |
-| Read receipts | `read_at` sur `Message` | Simple pour 1:1, refactor si groupes un jour |
-| Auth Socket | JWT au handshake | Même mécanisme que REST, cohérent |
+| User sync | Lazy upsert in the middleware | Resilience if the Supabase webhook fails |
+| REST + Socket | Shared `createMessage` | Single source of truth, no divergence |
+| Mark as read | Per conversation (bulk) | Avoids N queries when opening a chat |
+| Pagination | Offset | Simpler, sufficient for V1 |
+| Read receipts | `read_at` on `Message` | Simple for 1:1, refactor if groups come one day |
+| Socket auth | JWT at handshake | Same mechanism as REST, consistent |
 
 ---
 
-## Hors périmètre V1
+## Out of scope V1
 
-- Messages groupes (> 2 participants)
-- Partage de fichiers / images
-- Chiffrement end-to-end
-- Suppression / édition de messages
-- Réactions aux messages
-- Notifications push
+- Group messages (> 2 participants)
+- File / image sharing
+- End-to-end encryption
+- Deleting / editing messages
+- Message reactions
+- Push notifications
