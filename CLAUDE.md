@@ -62,8 +62,7 @@ npm run build            # compile to dist/
 2. **Never commit or push to `main`.** Never `push --force`.
    Everything reaches `main` through a Pull Request reviewed and merged by the developer.
 3. Commits follow Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`),
-   small and cohesive, with the `Co-Authored-By` trailer when Claude contributed
-   (a transparency trail for AI usage).
+   small and cohesive. Do not add a `Co-Authored-By` trailer for Claude.
 4. Never commit secrets or `.claude/settings.local.json`.
 
 ## Feature process
