@@ -200,6 +200,19 @@ The same list applies to REST routes and to Socket.io.
 
 ---
 
+## Continuous integration
+
+GitHub Actions workflow: `.github/workflows/ci.yml`.
+
+- **Trigger**: every Pull Request targeting `main` (when it is opened, then on
+  each push to its branch). A push on a branch without a PR runs nothing.
+- **Steps**: `npm ci` → `npx prisma generate` → `npx tsc --noEmit` → `npm test`, on Node 24.
+- **No secrets**: every test mocks Prisma and the auth middleware, so the
+  workflow needs neither a database nor Supabase keys.
+- **Not covered**: deployment (handled by Railway) and integration tests against a real database.
+
+---
+
 ## Development plan
 
 ### Step 1 — Setup & Auth
