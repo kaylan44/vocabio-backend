@@ -1,0 +1,83 @@
+# Continuous integration: type-check and run the test suite on GitHub's servers.
+#
+# Why: CLAUDE.md requires `tsc --noEmit` and `jest` to pass before any commit,
+# but that only holds if everyone remembers to run them locally. This workflow
+# makes the check automatic and visible (green check / red cross on each commit
+# and on each Pull Request).
+#
+# What it does NOT do: it does not deploy (Railway handles that on its own) and
+# it does not talk to a real database (every test mocks Prisma).
+name: CI
+
+on:
+  # Only PRs targeting main. The run starts when the PR is opened and again on
+  # every push to its branch. GitHub tests the *result of merging* the branch
+  # into main, which catches a branch that passes alone but breaks once merged.
+  #
+  # Rejected alternative: also triggering on `push`. It gives feedback before
+  # the PR exists, but every push on a branch with an open PR then starts two
+  # runs (one per event). Since nothing reaches main without a PR (see
+  # CLAUDE.md), the PR trigger alone covers everything that gets merged.
+  # Trade-off: a branch without a PR is not checked, and main itself is not
+  # re-tested after a merge.
+  pull_request:
+    branches: [main]
+
+# Least privilege: the job only needs to read the repository. Without this
+# block the token would get the repository's default permissions, which can
+# include write access.
+permissions:
+  contents: read
+
+# Two quick pushes on the same PR: cancel the older run, only the latest
+# commit matters. `github.ref` is the PR merge ref (refs/pull/<n>/merge), so
+# runs on different PRs never cancel each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Type-check and tests
+    runs-on: ubuntu-latest
+    # Safety net: a hanging test (e.g. an open handle) must not burn CI minutes
+    # until GitHub's default 6-hour limit.
+    timeout-minutes: 10
+
+    steps:
+      # The runner starts empty: clone the repository first.
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Node 24 = current LTS. Nothing pins the version in the repo yet
+      # (no .nvmrc, no "engines" in package.json); if production (Railway) is
+      # pinned to another version one day, align this value with it.
+      # `cache: npm` reuses the downloaded packages between runs, keyed on
+      # package-lock.json.
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly what
+      # package-lock.json says and fails if the lockfile is out of sync with
+      # package.json, instead of silently rewriting it.
+      - name: Install dependencies
+        run: npm ci
+
+      # The typed Prisma client is generated code, not committed. Without this
+      # step, `@prisma/client` has no model types and tsc fails.
+      # No DATABASE_URL needed: `generate` reads schema.prisma but never
+      # connects to the database.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # Separate from jest on purpose: ts-jest only type-checks the files that
+      # a test imports, so a type error in an untested file would go unnoticed.
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # No secrets required: Prisma and the auth middleware are mocked.
+      - name: Run tests
+        run: npm test
