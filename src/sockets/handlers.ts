@@ -18,7 +18,8 @@
 //  Serveur → Client (émis depuis les services) :
 //    new_message        { id, conversationId, ... }   → nouveau message reçu
 //    message_read       { conversationId, readAt, ... }→ messages lus par le destinataire
-//    user_typing        { conversationId, userId }     → quelqu'un est en train d'écrire
+//    user_typing        { conversationId, userId, username } → quelqu'un est en train d'écrire
+//                       (seul émis depuis ce fichier, par le handler typing)
 
 import { Server, Socket } from 'socket.io';
 import { assertParticipant } from '../services/conversationService';

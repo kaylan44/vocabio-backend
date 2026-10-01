@@ -1,8 +1,9 @@
-// Route de recherche d'utilisateurs.
+// Routes de consultation des utilisateurs.
 //
-// GET /users/search?q=alice
-// Retourne les utilisateurs dont le username contient la query,
-// en excluant l'utilisateur connecté de ses propres résultats.
+// GET /users                → lister tous les utilisateurs (triés par username)
+// GET /users/search?q=alice → utilisateurs dont le username contient la query
+//
+// Dans les deux cas, l'utilisateur connecté est exclu de ses propres résultats.
 
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
