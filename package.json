@@ -1,7 +1,7 @@
 {
   "name": "vocabio-backend",
   "version": "1.0.0",
-  "description": "Backend messagerie 1:1 pour Vocabio",
+  "description": "Vocabio backend: 1:1 messaging and quiz statistics",
   "main": "dist/app.js",
   "scripts": {
     "dev": "tsx watch src/app.ts",

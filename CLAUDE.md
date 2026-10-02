@@ -6,7 +6,8 @@ documentation for anyone reviewing the project.
 
 ## The project in short
 
-1:1 messaging backend for the Vocabio mobile app.
+Backend of the Vocabio mobile app. Two independent features: 1:1 messaging
+(REST + Socket.io) and quiz results with user statistics (REST only).
 Express + Socket.io (same HTTP server), Prisma on Supabase PostgreSQL,
 Supabase JWT auth verified locally via JWKS. Deployed on Railway.
 Functional details: `README.md`. Historical implementation plan: `PLAN.md`.

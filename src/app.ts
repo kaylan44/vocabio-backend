@@ -25,6 +25,7 @@ import webhookRouter from './routes/webhooks';
 import userRouter from './routes/users';
 import conversationRouter from './routes/conversations';
 import messageRouter from './routes/messages';
+import quizSessionRouter from './routes/quizSessions';
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use('/conversations', conversationRouter);
 // Les routes messages sont imbriquées sous /conversations/:id
 // ex: GET /conversations/abc/messages
 app.use('/conversations', messageRouter);
+app.use('/quiz-sessions', quizSessionRouter);
 
 // ─────────────────────────────────────────────
 // Serveur HTTP + Socket.io
