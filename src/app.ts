@@ -26,6 +26,7 @@ import userRouter from './routes/users';
 import conversationRouter from './routes/conversations';
 import messageRouter from './routes/messages';
 import quizSessionRouter from './routes/quizSessions';
+import { startArticleScheduler } from './jobs/articleScheduler';
 
 const app = express();
 
@@ -88,6 +89,10 @@ const PORT = process.env.PORT ?? 3000;
 
 httpServer.listen(PORT, () => {
   console.log(`Serveur démarré sur le port ${PORT}`);
+
+  // Article sync: started only once the server is listening, and only if
+  // ARTICLES_SYNC_ENABLED is 'true' (see src/jobs/articleScheduler.ts).
+  startArticleScheduler();
 });
 
 export { app, httpServer };
