@@ -2,6 +2,7 @@
 //
 // POST /quiz-sessions        → store the result of a finished quiz
 // GET  /quiz-sessions/stats  → aggregated statistics of the signed-in user
+// GET  /quiz-sessions/word-progress → progress of the signed-in user on each word
 //
 // No assertParticipant here: no conversation is involved. The protection is that
 // the user id always comes from req.user.id (the JWT), never from the body or the
@@ -12,6 +13,7 @@ import { authMiddleware } from '../middleware/auth';
 import {
   createQuizSession,
   getQuizStats,
+  getWordProgress,
   MAX_ANSWERS_PER_SESSION,
   QUIZ_CATEGORIES,
   QUIZ_LEVELS,
@@ -174,6 +176,18 @@ router.get('/stats', async (req: Request, res: Response) => {
     res.json(stats);
   } catch (error) {
     handleError(res, error, 'GET /quiz-sessions/stats');
+  }
+});
+
+// ─────────────────────────────────────────────
+// GET /quiz-sessions/word-progress
+// ─────────────────────────────────────────────
+router.get('/word-progress', async (req: Request, res: Response) => {
+  try {
+    const progress = await getWordProgress(req.user.id);
+    res.json(progress);
+  } catch (error) {
+    handleError(res, error, 'GET /quiz-sessions/word-progress');
   }
 });
 

@@ -4,6 +4,7 @@
 //   - createQuizSession: stores one finished quiz (session + one row per answer),
 //     idempotent and rate limited
 //   - getQuizStats: aggregated statistics of one user
+//   - getWordProgress: how well one user knows each word, per translation direction
 //
 // Important context: the vocabulary lives inside the mobile app, so the backend
 // CANNOT check that an answer was really correct. It trusts the client. This is
@@ -376,4 +377,87 @@ export const getQuizStats = async (userId: string) => {
       wrong: row._count.wordId,
     })),
   };
+};
+
+// ─────────────────────────────────────────────
+// getWordProgress
+// ─────────────────────────────────────────────
+/**
+ * Progress of one user on each word, per translation direction: one entry per
+ * (wordId, mode) the user has answered at least once.
+ *
+ * Nothing is stored for this: it is COMPUTED from the answers of the finished
+ * quizzes (QuizAnswer), the only thing the app ever sends. Consequences:
+ *   - no extra table, no extra write: POST /quiz-sessions stays the single write path;
+ *   - a quiz closed midway is never sent, so it never counts here;
+ *   - the progress can never disagree with the statistics, both read the same rows.
+ *
+ * Why in JavaScript rather than a GROUP BY: totalSeen / totalCorrect would fit a
+ * groupBy, but correctStreak depends on the ORDER of the answers (it restarts at 0 on
+ * a wrong answer), which a plain aggregate cannot express. So the answers are read
+ * oldest first and folded once.
+ *
+ * Known limit: this reads every answer of the user on each call (10 rows per quiz).
+ * Fine at today's scale; if it ever gets slow, store the counters in a table updated
+ * by createQuizSession.
+ *
+ * The mastery level shown in the app ('new' / 'seen' / 'mastered') is not returned:
+ * the app derives it from correctStreak and totalSeen, so the threshold lives there only.
+ *
+ * @param userId - Authenticated user (from the JWT)
+ */
+export const getWordProgress = async (userId: string) => {
+  const answers = await prisma.quizAnswer.findMany({
+    where: { session: { userId } },
+    select: {
+      wordId: true,
+      isCorrect: true,
+      session: { select: { mode: true, createdAt: true } },
+    },
+    // Oldest first, then the order of the questions inside a quiz. sessionId breaks
+    // the tie between two sessions created at the same millisecond, so their answers
+    // are never interleaved.
+    orderBy: [{ session: { createdAt: 'asc' } }, { sessionId: 'asc' }, { position: 'asc' }],
+  });
+
+  const progress = new Map<
+    string,
+    {
+      wordId: string;
+      mode: string;
+      correctStreak: number;
+      totalSeen: number;
+      totalCorrect: number;
+      lastSeenAt: Date;
+    }
+  >();
+
+  for (const answer of answers) {
+    const { mode, createdAt } = answer.session;
+    // '|' cannot appear in a mode, so two different (wordId, mode) pairs never collide.
+    const key = `${mode}|${answer.wordId}`;
+    const entry = progress.get(key) ?? {
+      wordId: answer.wordId,
+      mode,
+      correctStreak: 0,
+      totalSeen: 0,
+      totalCorrect: 0,
+      lastSeenAt: createdAt,
+    };
+
+    entry.totalSeen += 1;
+    if (answer.isCorrect) {
+      entry.totalCorrect += 1;
+      entry.correctStreak += 1;
+    } else {
+      // A wrong answer breaks the streak, whatever came before.
+      entry.correctStreak = 0;
+    }
+    // Answers come oldest first, so the last one seen is the most recent.
+    entry.lastSeenAt = createdAt;
+
+    progress.set(key, entry);
+  }
+
+  return [...progress.values()];
 };
