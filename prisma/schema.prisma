@@ -145,3 +145,76 @@ model QuizAnswer {
   // A session cannot have two answers at the same position.
   @@unique([sessionId, position])
 }
+
+// ─────────────────────────────────────────────
+// TABLE Article
+// One row per article copied from an external source (today: Hola Qué Pasa, easy
+// Spanish news for learners). Filled by the ingestion job, never by a user request
+// (see src/services/articleIngestService.ts).
+//
+// Two ids on purpose:
+// - id is OUR id (UUID), the only one the app sees.
+// - externalId is the id of the post at the source (a WordPress post number such as
+//   '74003'). With `source` it is the dedupe key of the ingestion: the unique
+//   constraint below makes it impossible to store the same article twice, even if two
+//   ingestion runs overlap.
+//
+// content is JSON (a list of paragraphs made of text segments, see ArticleBlock in
+// src/services/articleParser.ts), NOT the HTML of the source: the app has no HTML
+// renderer, and storing plain text removes any script-injection risk on web.
+//
+// source / lang / level are Strings, not enums, for the same reason as
+// QuizSession.mode: a new value must not require a migration.
+//
+// audioSourceUrl is internal (never returned by the API). It is kept so that a failed
+// MP3 download can be retried by a later run. null = the article has no audio.
+//
+// The index on publishedAt is overkill for the ~30 rows kept (30 days of retention),
+// it is there because it matches the only sort used and costs nothing.
+// ─────────────────────────────────────────────
+model Article {
+  id               String   @id @default(uuid())
+  source           String // 'holaquepasa'
+  externalId       String // post id at the source, e.g. '74003'
+  lang             String // 'es'
+  level            String? // 'easy' | 'intermediate' | null when the source gives none
+  title            String
+  excerpt          String // beginning of the text, for the list screen
+  content          Json // ArticleBlock[], never HTML
+  url              String // link to the original article (attribution)
+  imageUrl         String? // served by the source, not copied
+  audioSourceUrl   String? // where the MP3 was found, internal
+  audioDurationSec Int?
+  publishedAt      DateTime
+  createdAt        DateTime @default(now())
+
+  audio ArticleAudio?
+
+  @@unique([source, externalId])
+  @@index([publishedAt])
+}
+
+// ─────────────────────────────────────────────
+// TABLE ArticleAudio
+// The MP3 reading of an article, stored in the database (bytea) rather than in a file
+// storage: no extra service to configure, and the file disappears with its article
+// through the cascade. Fine for one ~2 MB file per day; a file storage becomes the
+// better choice with more users or bigger files.
+//
+// Why a separate table instead of a `Bytes` column on Article: a query on Article can
+// then NEVER drag megabytes of audio along by mistake. With a column, every findMany
+// would need a `select` that someone will forget one day.
+//
+// size duplicates data.length so the list and the Content-Length header can be
+// produced without reading the bytes.
+// ─────────────────────────────────────────────
+model ArticleAudio {
+  articleId String @id
+  data      Bytes // the MP3 itself
+  mimeType  String // 'audio/mpeg'
+  size      Int // bytes
+
+  // Cascade: an audio file has no meaning without its article (and the purge of old
+  // articles relies on it).
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+}
