@@ -91,6 +91,13 @@ npm run build            # compile to dist/
   flag it instead of writing it.
 - Everything is mocked today: there is no integration test against a real
   database yet. Do not claim otherwise.
+- **Never modify an existing test without asking the developer first.** When a
+  change breaks a test, stop and report it: which test, the old assertion, and
+  why it fails. The default assumption is that the test is right and the code
+  is wrong (a regression), so fix the code. If the behavior changed on purpose,
+  propose the new assertion and wait for approval before editing the test.
+  This covers weakening an assertion, changing an expected value, deleting a
+  test and adding `.skip`. Adding new tests needs no approval.
 
 ## Secrets
 
