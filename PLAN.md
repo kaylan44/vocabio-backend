@@ -374,6 +374,52 @@ memory. Every query is filtered by the user of the JWT.
 
 ---
 
+## Step 7 — Easy Spanish articles with audio
+
+**Branch:** `feat/articles`
+
+Detailed plan: `.claude/plans/articles-backend.md`. A third independent feature: the backend
+copies short news articles written for Spanish learners (source: Hola Qué Pasa, through its
+public WordPress REST API) and serves them to the app, text and audio. Private testing only:
+the content is not licensed for reuse, so the job is behind `ARTICLES_SYNC_ENABLED`, off by
+default.
+
+### Data model
+
+`Article` (text as structured JSON, level, audio duration) and `ArticleAudio`
+(the MP3 as `Bytes`, in its own table so that no query on `Article` loads it by mistake).
+`(source, externalId)` is unique: it is the dedupe key of the ingestion.
+
+### Ingestion
+
+```
+articleScheduler (in-process timer: 30 s after boot, then every 6 h)
+  └─ articleIngestService.runIngestion()
+       1. holaQuePasa.fetchLatestPosts(10)          one call to the source API
+       2. articleParser.parsePost(post)             HTML → paragraphs, pure function
+       3. new article → download its MP3 → create Article (+ ArticleAudio)
+          stored without audio → retry the download
+          stored with audio → nothing
+       4. delete articles published more than 30 days ago (cascade removes the audio)
+```
+
+Every URL found in the remote content is checked (https, host `holaquepasa.com`) before
+being stored or fetched; the MP3 download also refuses redirects, non-audio types and
+files over 10 MB.
+
+### `GET /articles`, `GET /articles/:id`, `GET /articles/:id/audio`
+
+All behind `authMiddleware`. The list is paginated (offset) and can be filtered by level.
+The audio route returns the whole file: the app downloads it with its JWT, then plays and
+seeks locally, so no `Range` support and no unauthenticated URL are needed.
+
+### Tests
+
+Parser (hand-written HTML fixtures), source client (`fetch` mocked), ingestion, read
+service, routes, scheduler (fake timers). The RLS guard covers the new migration.
+
+---
+
 ## Architecture decisions — Summary
 
 | Decision | Choice | Reason |
@@ -388,6 +434,11 @@ memory. Every query is filtered by the user of the JWT.
 | Quiz `mode` / `category` / `level` | `String` validated by the route, not Prisma enums | `fr-es` is not a valid enum identifier; no migration for each new value |
 | Quiz `category` / `level` | Copied onto each answer | No word table in the backend, needed for stats by category/level |
 | Quiz rate limit | Latest session read from the database | No new dependency, survives restarts, works with several instances |
+| Article source | WordPress REST API, not the RSS feed | The feed has no full text; the API also gives the level and the audio |
+| Article text | Structured JSON (paragraphs of segments), not HTML | No HTML renderer in the app, no script injection, vocabulary glosses kept |
+| Article audio | `Bytes` in PostgreSQL, in its own table | No file storage to configure for a private test; never loaded by a list query |
+| Audio delivery | Whole file behind the JWT, no `Range` | An audio element cannot send the JWT on web; the app downloads then plays locally |
+| Article sync | In-process timer behind a feature flag | Single Railway instance; off by default because the content is not licensed |
 
 ---
 

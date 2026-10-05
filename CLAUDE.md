@@ -6,8 +6,10 @@ documentation for anyone reviewing the project.
 
 ## The project in short
 
-Backend of the Vocabio mobile app. Two independent features: 1:1 messaging
-(REST + Socket.io) and quiz results with user statistics (REST only).
+Backend of the Vocabio mobile app. Three independent features: 1:1 messaging
+(REST + Socket.io), quiz results with user statistics (REST only), and easy
+Spanish articles copied from an external site, text and audio (REST only, plus
+a timer in `src/jobs/`; off unless `ARTICLES_SYNC_ENABLED` is `true`).
 Express + Socket.io (same HTTP server), Prisma on Supabase PostgreSQL,
 Supabase JWT auth verified locally via JWKS. Deployed on Railway.
 Functional details: `README.md`. Historical implementation plan: `PLAN.md`.
@@ -89,6 +91,13 @@ npm run build            # compile to dist/
   flag it instead of writing it.
 - Everything is mocked today: there is no integration test against a real
   database yet. Do not claim otherwise.
+- **Never modify an existing test without asking the developer first.** When a
+  change breaks a test, stop and report it: which test, the old assertion, and
+  why it fails. The default assumption is that the test is right and the code
+  is wrong (a regression), so fix the code. If the behavior changed on purpose,
+  propose the new assertion and wait for approval before editing the test.
+  This covers weakening an assertion, changing an expected value, deleting a
+  test and adding `.skip`. Adding new tests needs no approval.
 
 ## Secrets
 
