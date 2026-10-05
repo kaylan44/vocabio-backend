@@ -26,6 +26,7 @@ import userRouter from './routes/users';
 import conversationRouter from './routes/conversations';
 import messageRouter from './routes/messages';
 import quizSessionRouter from './routes/quizSessions';
+import articleRouter from './routes/articles';
 import { startArticleScheduler } from './jobs/articleScheduler';
 
 const app = express();
@@ -65,6 +66,7 @@ app.use('/conversations', conversationRouter);
 // ex: GET /conversations/abc/messages
 app.use('/conversations', messageRouter);
 app.use('/quiz-sessions', quizSessionRouter);
+app.use('/articles', articleRouter);
 
 // ─────────────────────────────────────────────
 // Serveur HTTP + Socket.io
