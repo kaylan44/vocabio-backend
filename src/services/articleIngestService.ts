@@ -154,7 +154,6 @@ export const runIngestion = async (now: Date = new Date()): Promise<IngestionRep
             // objects of strings.
             content: article.content as unknown as Prisma.InputJsonValue,
             url: article.url,
-            imageUrl: article.imageUrl,
             audioSourceUrl: article.audioSourceUrl,
             audioDurationSec: article.audioDurationSec,
             publishedAt: article.publishedAt,

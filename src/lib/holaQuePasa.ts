@@ -8,7 +8,7 @@
 // Which API: the site is a WordPress, and WordPress exposes a public, read-only REST
 // API at /wp-json/wp/v2. We use it instead of the RSS feed because the feed has no
 // full text and a truncated summary, while the API gives the text, the level
-// (categories), the image and the audio in one call.
+// (categories) and the audio in one call.
 //
 // Legal context: the site publishes no reuse licence. Copying its content is only
 // acceptable for private testing, which is why the whole feature sits behind the
@@ -44,8 +44,7 @@ const AUDIO_TIMEOUT_MS = 60_000;
 const USER_AGENT = 'vocabio-backend (private test, article sync)';
 
 // Only the fields the parser reads: the default response is several times bigger.
-// `_links` and `_embedded` must be listed, otherwise `_embed` returns nothing.
-const POST_FIELDS = 'id,date_gmt,link,title,categories,content,_links,_embedded';
+const POST_FIELDS = 'id,date_gmt,link,title,categories,content';
 
 // ─────────────────────────────────────────────
 // isSourceUrl (security guard)
@@ -53,7 +52,7 @@ const POST_FIELDS = 'id,date_gmt,link,title,categories,content,_links,_embedded'
 /**
  * True only for an absolute https URL whose host is exactly the source.
  *
- * Every URL found INSIDE the remote content (MP3, image, article link) goes through
+ * Every URL found INSIDE the remote content (MP3, article link) goes through
  * this check before being stored or fetched. Without it, a compromised or modified
  * source could make this server download from an arbitrary address, including
  * internal ones (server-side request forgery), or make the app load arbitrary URLs.
@@ -100,8 +99,6 @@ export const fetchLatestPosts = async (limit: number): Promise<unknown[]> => {
   const url = new URL(POSTS_PATH, SOURCE_ORIGIN);
   url.searchParams.set('categories', String(NEWS_CATEGORY_ID));
   url.searchParams.set('per_page', String(limit));
-  // `_embed` inlines the featured image, which would otherwise cost one call per post.
-  url.searchParams.set('_embed', 'wp:featuredmedia');
   url.searchParams.set('_fields', POST_FIELDS);
 
   const response = await fetch(url, {

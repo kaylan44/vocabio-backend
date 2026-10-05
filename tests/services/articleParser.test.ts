@@ -65,11 +65,6 @@ const makePost = (overrides: Record<string, unknown> = {}) => ({
   title: { rendered: 'El gato &#8220;Tom&#8221; &amp; la casa' },
   categories: [331, 23],
   content: { rendered: html() },
-  _embedded: {
-    'wp:featuredmedia': [
-      { source_url: 'https://holaquepasa.com/wp-content/uploads/2026/09/gato.jpg' },
-    ],
-  },
   ...overrides,
 });
 
@@ -78,7 +73,7 @@ const textOf = (block: ArticleBlock): string => block.segments.map((s) => s.text
 describe('articleParser', () => {
   // ─────────────────────────────────────────────
   describe('parsePost — fields', () => {
-    it('extracts the id, link, date, level, image and audio of a complete post', () => {
+    it('extracts the id, link, date, level and audio of a complete post', () => {
       const article = parsePost(makePost());
 
       expect(article).not.toBeNull();
@@ -86,7 +81,6 @@ describe('articleParser', () => {
         externalId: '74003',
         url: 'https://holaquepasa.com/el-gato-de-la-casa/',
         level: 'easy',
-        imageUrl: 'https://holaquepasa.com/wp-content/uploads/2026/09/gato.jpg',
         audioSourceUrl: AUDIO_URL,
         audioDurationSec: 232,
       });
@@ -227,7 +221,7 @@ describe('articleParser', () => {
   });
 
   // ─────────────────────────────────────────────
-  describe('parsePost — audio and image are optional and never trusted', () => {
+  describe('parsePost — audio is optional and never trusted, images are never kept', () => {
     it('keeps the article without audio when the post has no audio block', () => {
       const article = parsePost(makePost({ content: { rendered: BODY } }));
 
@@ -252,13 +246,16 @@ describe('articleParser', () => {
       expect(parsePost(makePost({ content: { rendered: body } }))?.audioSourceUrl).toBeNull();
     });
 
-    it('ignores an image that is not on the source host, or a malformed _embedded', () => {
-      const foreign = { 'wp:featuredmedia': [{ source_url: 'https://evil.test/x.jpg' }] };
+    it('keeps no image, even when the post carries one', () => {
+      // Decision: images are not part of the feature. Neither the featured image
+      // (if the API sent it anyway) nor the <img> of the body may end up in an article.
+      const featured = {
+        'wp:featuredmedia': [{ source_url: 'https://holaquepasa.com/wp-content/uploads/gato.jpg' }],
+      };
+      const article = parsePost(makePost({ _embedded: featured, featured_media: 74010 }));
 
-      expect(parsePost(makePost({ _embedded: foreign }))?.imageUrl).toBeNull();
-      expect(parsePost(makePost({ _embedded: undefined }))?.imageUrl).toBeNull();
-      expect(parsePost(makePost({ _embedded: { 'wp:featuredmedia': [null] } }))?.imageUrl).toBeNull();
-      expect(parsePost(makePost({ _embedded: { 'wp:featuredmedia': 'nope' } }))?.imageUrl).toBeNull();
+      expect(article).not.toBeNull();
+      expect(JSON.stringify(article)).not.toMatch(/\.jpg|imageUrl|featured/i);
     });
 
     it('keeps the audio but no duration when the duration is unreadable', () => {

@@ -68,7 +68,7 @@ describe('holaQuePasa client', () => {
 
   // ─────────────────────────────────────────────
   describe('fetchLatestPosts', () => {
-    it('asks the source for the latest news posts with the featured image embedded', async () => {
+    it('asks the source for the latest news posts, and for no image', async () => {
       mockFetch.mockResolvedValue(Response.json([{ id: 1 }, { id: 2 }]));
 
       const posts = await fetchLatestPosts(10);
@@ -80,10 +80,10 @@ describe('holaQuePasa client', () => {
       expect(url.pathname).toBe('/wp-json/wp/v2/posts');
       expect(url.searchParams.get('categories')).toBe(String(NEWS_CATEGORY_ID));
       expect(url.searchParams.get('per_page')).toBe('10');
-      expect(url.searchParams.get('_embed')).toBe('wp:featuredmedia');
-      // Without _links and _embedded in _fields, WordPress drops the embedded image.
-      expect(url.searchParams.get('_fields')).toContain('_embedded');
-      expect(url.searchParams.get('_fields')).toContain('_links');
+      // Images are deliberately not fetched: neither the embedded featured image nor
+      // the fields that carry it are requested.
+      expect(url.searchParams.has('_embed')).toBe(false);
+      expect(url.searchParams.get('_fields')).toBe('id,date_gmt,link,title,categories,content');
     });
 
     it('sends a timeout signal so a silent source cannot hang the job', async () => {

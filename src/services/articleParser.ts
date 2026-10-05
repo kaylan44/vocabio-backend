@@ -62,7 +62,6 @@ export interface ParsedArticle {
   url: string;
   level: ArticleLevel | null;
   publishedAt: Date;
-  imageUrl: string | null;
   audioSourceUrl: string | null;
   audioDurationSec: number | null;
   excerpt: string;
@@ -274,19 +273,6 @@ const parsePublishedAt = (dateGmt: unknown): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-// _embedded['wp:featuredmedia'][0].source_url, each level checked before being read.
-const parseImageUrl = (embedded: unknown): string | null => {
-  if (!isPlainObject(embedded)) {
-    return null;
-  }
-  const media = embedded['wp:featuredmedia'];
-  if (!Array.isArray(media) || !isPlainObject(media[0])) {
-    return null;
-  }
-  const sourceUrl = media[0].source_url;
-  return isSourceUrl(sourceUrl) ? sourceUrl : null;
-};
-
 // ─────────────────────────────────────────────
 // parsePost
 // ─────────────────────────────────────────────
@@ -298,8 +284,8 @@ const parseImageUrl = (embedded: unknown): string | null => {
  * are read; the try/catch is only a last safety net around the HTML library.
  *
  * @returns null when the post cannot give a usable article (no id, no title, no date,
- *          no link back to the source, or no text). An article WITHOUT audio or image
- *          is still valid.
+ *          no link back to the source, or no text). An article WITHOUT audio is still
+ *          valid.
  */
 export const parsePost = (post: unknown): ParsedArticle | null => {
   try {
@@ -376,7 +362,6 @@ export const parsePost = (post: unknown): ParsedArticle | null => {
       url: post.link,
       level: parseLevel(post.categories),
       publishedAt,
-      imageUrl: parseImageUrl(post._embedded),
       audioSourceUrl,
       audioDurationSec,
       excerpt: buildExcerpt(content),

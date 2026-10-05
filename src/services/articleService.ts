@@ -36,7 +36,6 @@ const SUMMARY_SELECT = {
   title: true,
   excerpt: true,
   url: true,
-  imageUrl: true,
   publishedAt: true,
   audioDurationSec: true,
   audio: { select: { articleId: true } },

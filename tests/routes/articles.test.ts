@@ -44,7 +44,6 @@ const summary = {
   title: 'El gato',
   excerpt: 'El gato vive en una casa.',
   url: 'https://holaquepasa.com/el-gato/',
-  imageUrl: null,
   publishedAt: '2026-10-04T12:00:00.000Z',
   audioDurationSec: 65,
   hasAudio: true,

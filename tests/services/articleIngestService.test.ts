@@ -133,7 +133,6 @@ describe('articleIngestService.runIngestion', () => {
         excerpt: 'Texto del artículo 1.',
         content: [{ type: 'paragraph', segments: [{ text: 'Texto del artículo 1.' }] }],
         url: 'https://holaquepasa.com/articulo-1/',
-        imageUrl: null,
         audioSourceUrl: audioUrl(1),
         audioDurationSec: 65,
         publishedAt: new Date('2026-10-04T12:00:00.000Z'),

@@ -386,7 +386,7 @@ default.
 
 ### Data model
 
-`Article` (text as structured JSON, level, image URL, audio duration) and `ArticleAudio`
+`Article` (text as structured JSON, level, audio duration) and `ArticleAudio`
 (the MP3 as `Bytes`, in its own table so that no query on `Article` loads it by mistake).
 `(source, externalId)` is unique: it is the dedupe key of the ingestion.
 
@@ -434,7 +434,7 @@ service, routes, scheduler (fake timers). The RLS guard covers the new migration
 | Quiz `mode` / `category` / `level` | `String` validated by the route, not Prisma enums | `fr-es` is not a valid enum identifier; no migration for each new value |
 | Quiz `category` / `level` | Copied onto each answer | No word table in the backend, needed for stats by category/level |
 | Quiz rate limit | Latest session read from the database | No new dependency, survives restarts, works with several instances |
-| Article source | WordPress REST API, not the RSS feed | The feed has no full text; the API also gives the level, the image and the audio |
+| Article source | WordPress REST API, not the RSS feed | The feed has no full text; the API also gives the level and the audio |
 | Article text | Structured JSON (paragraphs of segments), not HTML | No HTML renderer in the app, no script injection, vocabulary glosses kept |
 | Article audio | `Bytes` in PostgreSQL, in its own table | No file storage to configure for a private test; never loaded by a list query |
 | Audio delivery | Whole file behind the JWT, no `Range` | An audio element cannot send the JWT on web; the app downloads then plays locally |

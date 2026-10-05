@@ -182,7 +182,6 @@ model Article {
   excerpt          String // beginning of the text, for the list screen
   content          Json // ArticleBlock[], never HTML
   url              String // link to the original article (attribution)
-  imageUrl         String? // served by the source, not copied
   audioSourceUrl   String? // where the MP3 was found, internal
   audioDurationSec Int?
   publishedAt      DateTime

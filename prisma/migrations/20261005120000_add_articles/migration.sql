@@ -17,7 +17,6 @@ CREATE TABLE "Article" (
     "excerpt" TEXT NOT NULL,
     "content" JSONB NOT NULL,
     "url" TEXT NOT NULL,
-    "imageUrl" TEXT,
     "audioSourceUrl" TEXT,
     "audioDurationSec" INTEGER,
     "publishedAt" TIMESTAMP(3) NOT NULL,

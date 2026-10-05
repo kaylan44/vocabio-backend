@@ -180,7 +180,6 @@ through the API.
   "excerpt"           TEXT NOT NULL,     -- beginning of the text, for the list
   "content"           JSONB NOT NULL,    -- paragraphs of text segments, never HTML
   "url"               TEXT NOT NULL,     -- original article (attribution)
-  "imageUrl"          TEXT,              -- served by the source, not copied
   "audioSourceUrl"    TEXT,              -- internal: where the MP3 was found
   "audioDurationSec"  INTEGER,
   "publishedAt"       TIMESTAMP(3) NOT NULL,
@@ -320,7 +319,6 @@ stored or fetched; the MP3 download also refuses redirects, non-audio types and 
       "title": "…",
       "excerpt": "…",                   // about 200 characters
       "url": "https://holaquepasa.com/…",   // original article, for attribution
-      "imageUrl": "https://holaquepasa.com/…jpg",   // or null; served by the source
       "publishedAt": "2026-10-03T12:00:00.000Z",
       "audioDurationSec": 232,          // or null
       "hasAudio": true                  // false: do not call the audio route
@@ -515,6 +513,6 @@ Articles:
 - A second source, or articles in French (the data model already allows both)
 - Refreshing the text of an article already stored
 - `Range` requests on the audio, and a file storage instead of the database
-- Copying the image: it is loaded from the source by the app
+- Images: none is fetched, stored or served, not even the address of an article's image
 - A manual "sync now" endpoint, and per-user state (read / unread, favourites)
 - Integration test against a real database: as for the rest, everything is mocked

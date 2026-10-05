@@ -4,7 +4,7 @@
 
 The mobile app (`vocabio2`) only offers vocabulary quizzes today. Goal: a separate
 "read an easy article" section, fed by an external source. The backend aggregates the
-articles (text, level, image, audio), stores them, and serves them to the app.
+articles (text, level, audio), stores them, and serves them to the app.
 
 Source: **Hola Qué Pasa** (`holaquepasa.com`), one short news article per day written
 for Spanish learners, each with an MP3 reading.
@@ -13,6 +13,9 @@ Decisions already taken with the developer:
 
 - **No vocabulary matching.** Articles are a section of their own, unrelated to the quiz.
 - **Full text read inside the app**, not a link out.
+- **No image.** Nothing about images is fetched, stored or served: not the file, not
+  its address. The `<figure>` of the article body is dropped with the rest of the
+  non-text markup.
 - **Audio is copied**, not streamed from the source, and stored **in PostgreSQL**
   (`bytea`), not in a file storage. The app downloads the bytes with a normal
   authenticated `fetch` and plays them locally.
@@ -39,7 +42,6 @@ Facts that shape the design (checked against the live site on 2026-10-05):
 - Inside the paragraphs, some phrases carry a vocabulary tooltip: a
   `span.su-tooltip-button` (the Spanish phrase) followed by a hidden `span.su-tooltip`
   whose `.su-tooltip-content` is an **English** gloss. About 14 per article.
-- The featured image comes with `_embed=wp:featuredmedia` (`source_url`, 640 px wide).
 - An MP3 is about 1.5 to 3 MB. One article per day, published at 12:00 UTC.
 - The backend runs as **one** Railway instance (Socket.io has no adapter), so an
   in-process timer is enough. There is no file storage and the disk is ephemeral.
@@ -61,7 +63,6 @@ model Article {
   excerpt          String                 // first ~200 characters, for the list
   content          Json                   // ArticleBlock[] (see section 3), never HTML
   url              String                 // link to the original article (attribution)
-  imageUrl         String?
   audioSourceUrl   String?                // where the MP3 was found; null = no audio
   audioDurationSec Int?
   publishedAt      DateTime
@@ -107,7 +108,7 @@ HTTP only, no parsing, no Prisma. Uses Node's global `fetch` (Node ≥ 18; CI ru
 
 - `fetchLatestPosts(limit): Promise<WpPost[]>`
   `GET https://holaquepasa.com/wp-json/wp/v2/posts?categories=23&per_page=<limit>`
-  `&_embed=wp:featuredmedia&_fields=id,date_gmt,link,title,categories,content,_links,_embedded`
+  `&_fields=id,date_gmt,link,title,categories,content`
 - `downloadAudio(url): Promise<{ data: Buffer; mimeType: string }>`
 - Shared rules: 20 s timeout (`AbortSignal.timeout`), an explicit `User-Agent` naming
   the project, non-2xx → throw.
@@ -129,7 +130,7 @@ type ArticleBlock = { type: 'paragraph'; segments: ArticleSegment[] };
 
 interface ParsedArticle {
   externalId: string; title: string; url: string; level: ArticleLevel | null;
-  publishedAt: Date; imageUrl: string | null;
+  publishedAt: Date;
   audioSourceUrl: string | null; audioDurationSec: number | null;
   excerpt: string; content: ArticleBlock[];
 }
@@ -152,7 +153,6 @@ Rules:
 - Entities decoded, whitespace collapsed, empty paragraphs dropped.
 - `level` from `categories` (`331` → `easy`, `332` → `intermediate`).
 - `title.rendered` is HTML-escaped by WordPress: decode it.
-- `imageUrl` kept only if `https` on `holaquepasa.com`.
 - Returns `null` when the id, title, date or body is missing. An article without audio
   is still valid.
 
@@ -203,7 +203,7 @@ All three routes go through `authMiddleware` (guests have no access, like statis
 | `GET /articles/:id/audio` | the MP3 bytes |
 
 ```ts
-ArticleSummary = { id, source, lang, level, title, excerpt, url, imageUrl,
+ArticleSummary = { id, source, lang, level, title, excerpt, url,
                    publishedAt, hasAudio, audioDurationSec }
 ```
 
@@ -228,7 +228,7 @@ Prisma and the source client are mocked, as everywhere else. HTML fixtures are
 - `tests/services/articleParser.test.ts`: body paragraphs kept in order; player,
   subscribe links, image and grammar section dropped; tooltip → `{ text, gloss }` with
   no hidden text leaking and no hole; entities decoded; duration parsing; level
-  mapping; foreign image host rejected; missing fields → `null`; garbage input → `null`
+  mapping; no image kept; missing fields → `null`; garbage input → `null`
   without throwing.
 - `tests/lib/holaQuePasa.test.ts` (`fetch` mocked): query string; non-2xx throws;
   `downloadAudio` refuses another host, `http:`, a non-audio type, an oversized
