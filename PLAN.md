@@ -367,10 +367,19 @@ string and copies `category` / `level` onto each answer.
 mode, answers by category, answers by level, most missed words) and shapes the result in
 memory. Every query is filtered by the user of the JWT.
 
+### `GET /quiz-sessions/word-progress`
+
+Added later (branch `feat/word-progress`), when the app stopped keeping the per-word
+progress on the device. `quizService.getWordProgress(userId)` reads the user's answers
+oldest first and folds them into one entry per `(wordId, mode)`: `correctStreak`,
+`totalSeen`, `totalCorrect`, `lastSeenAt`. No table and no new write: the progress is
+derived from what `POST /quiz-sessions` already stores, so an unfinished quiz never counts.
+
 ### Tests
 
 `tests/services/quizService.test.ts` (Prisma mocked) and `tests/routes/quizSessions.test.ts`
-(supertest, service mocked). The RLS guard `tests/prisma/rls.test.ts` covers the new migration.
+(supertest, service mocked). The word progress has its own two files,
+`tests/services/quizWordProgress.test.ts` and `tests/routes/quizWordProgress.test.ts`. The RLS guard `tests/prisma/rls.test.ts` covers the new migration.
 
 ---
 
@@ -434,6 +443,7 @@ service, routes, scheduler (fake timers). The RLS guard covers the new migration
 | Quiz `mode` / `category` / `level` | `String` validated by the route, not Prisma enums | `fr-es` is not a valid enum identifier; no migration for each new value |
 | Quiz `category` / `level` | Copied onto each answer | No word table in the backend, needed for stats by category/level |
 | Quiz rate limit | Latest session read from the database | No new dependency, survives restarts, works with several instances |
+| Word progress | Computed from `QuizAnswer` on read, no table | One write path, cannot drift from the statistics; a counters table can come later if reads get slow |
 | Article source | WordPress REST API, not the RSS feed | The feed has no full text; the API also gives the level and the audio |
 | Article text | Structured JSON (paragraphs of segments), not HTML | No HTML renderer in the app, no script injection, vocabulary glosses kept |
 | Article audio | `Bytes` in PostgreSQL, in its own table | No file storage to configure for a private test; never loaded by a list query |

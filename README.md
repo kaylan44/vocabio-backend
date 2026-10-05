@@ -9,7 +9,9 @@ the same database and the same authentication:
 - **1:1 messaging** between users: conversations, text messages, read indicators, real time
   (REST + Socket.io).
 - **Quiz results and statistics**: each quiz finished by a signed-in user is stored in
-  detail, and the account page reads aggregated statistics (REST only).
+  detail, and the account page reads aggregated statistics (REST only). The same stored
+  answers give the progress of the user on each word, which the app no longer keeps on
+  the device.
 - **Easy Spanish articles**: short news articles written for learners are copied from an
   external site, text and audio, and served to the app (REST only). Off by default, for
   private testing only: see "Articles" below.
@@ -223,6 +225,7 @@ listed under "Endpoints without JWT" below.
 | Messaging | `PATCH` | `/conversations/:id/read` | Mark all received messages of the conversation as read |
 | Quiz | `POST` | `/quiz-sessions` | Store the result of a finished quiz |
 | Quiz | `GET` | `/quiz-sessions/stats` | Aggregated quiz statistics of the signed-in user |
+| Quiz | `GET` | `/quiz-sessions/word-progress` | Progress of the signed-in user on each word |
 | Articles | `GET` | `/articles` | Paginated list of articles, newest first, without their text |
 | Articles | `GET` | `/articles/:id` | One article with its text |
 | Articles | `GET` | `/articles/:id/audio` | The MP3 reading of the article |
@@ -278,6 +281,32 @@ the questions were asked. The client never sends the score: it is computed from 
 ```
 
 `mostMissedWords` only contains word ids: the app resolves them to the actual words.
+
+`GET /quiz-sessions/word-progress` response: one entry per word and per translation
+direction the user has answered at least once, an empty array otherwise.
+
+```json
+[
+  {
+    "wordId": "n001",
+    "mode": "fr-es",
+    "correctStreak": 2,
+    "totalSeen": 5,
+    "totalCorrect": 4,
+    "lastSeenAt": "2026-10-05T10:00:00.000Z"
+  }
+]
+```
+
+- **Computed, not stored**: there is no progress table. The entries are folded from the
+  `"QuizAnswer"` rows, oldest first, on each call. `POST /quiz-sessions` is the only write.
+- **Finished quizzes only**: a quiz closed midway is never sent, so it never counts.
+- `correctStreak` is the number of correct answers in a row up to the latest one; a wrong
+  answer puts it back to 0. `lastSeenAt` is the date of the latest quiz containing the word.
+- The mastery level shown by the app (`new` / `seen` / `mastered`) is derived by the app
+  from `correctStreak` and `totalSeen`.
+- Cost: every answer of the user is read on each call (10 rows per quiz). Fine today; a
+  table of counters updated by `POST /quiz-sessions` is the next step if it gets slow.
 
 ### Articles
 
@@ -492,6 +521,7 @@ GitHub Actions workflow: `.github/workflows/ci.yml`.
 - `QuizSession` / `QuizAnswer` tables
 - Idempotent, rate-limited endpoint storing a finished quiz
 - Aggregated statistics endpoint for the account page
+- Word progress endpoint, computed from the stored answers (added after the articles)
 
 ### Step 7 — Easy Spanish articles with audio
 - `Article` / `ArticleAudio` tables
