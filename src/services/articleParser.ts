@@ -158,7 +158,10 @@ const collectSegments = (
 
     const tag = child.tagName?.toLowerCase();
 
-    if (tag === 'script' || tag === 'style') {
+    // The HTML library does not parse the inside of these elements: it hands it back
+    // as raw text. Without this skip, `<noscript><img …></noscript>` (written by
+    // lazy-loading plugins) would put literal markup in the middle of the article.
+    if (tag === 'script' || tag === 'style' || tag === 'noscript') {
       continue;
     }
 
@@ -169,11 +172,21 @@ const collectSegments = (
     }
 
     if (hasClass(child, 'su-tooltip-button')) {
-      const phrase = collapseWhitespace(child.text).trim();
+      const raw = collapseWhitespace(child.text);
       const gloss = glosses.get(child.getAttribute('aria-describedby') ?? '');
+      // The phrase itself is trimmed (a gloss applies to words, not to spaces), but a
+      // space at its edges is NOT thrown away: it is handed to the surrounding text.
+      // Otherwise `a<span> los coches </span>y` would come out as "alos cochesy" when
+      // the only space between the words is inside the span.
+      if (raw.startsWith(' ')) {
+        pushSegment(segments, ' ');
+      }
       // No gloss found (markup changed?): keep the phrase as ordinary text rather
       // than losing a piece of the sentence.
-      pushSegment(segments, phrase, gloss);
+      pushSegment(segments, raw.trim(), gloss);
+      if (raw.endsWith(' ')) {
+        pushSegment(segments, ' ');
+      }
       continue;
     }
 

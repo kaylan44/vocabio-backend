@@ -149,6 +149,27 @@ describe('articleParser', () => {
       expect(textOf(article!.content[0])).not.toContain('a small house');
     });
 
+    it('keeps the space between words when it only exists inside the tooltip', () => {
+      // No space outside the span on either side: the only separators are inside it.
+      // Trimming the phrase without giving the spaces back glued the three words.
+      const body = `<p>amor a${tooltip('t1', ' los coches ', 'cars')}y más.</p>`;
+      const article = parsePost(makePost({ content: { rendered: html(body) } }));
+
+      expect(article?.content[0].segments).toEqual([
+        { text: 'amor a ' },
+        { text: 'los coches', gloss: 'cars' },
+        { text: ' y más.' },
+      ]);
+      expect(textOf(article!.content[0])).toBe('amor a los coches y más.');
+    });
+
+    it('does not double a space that exists both inside and outside the tooltip', () => {
+      const body = `<p>amor a ${tooltip('t1', ' los coches ', 'cars')} y más.</p>`;
+      const article = parsePost(makePost({ content: { rendered: html(body) } }));
+
+      expect(textOf(article!.content[0])).toBe('amor a los coches y más.');
+    });
+
     it('keeps the phrase as plain text when its gloss cannot be found', () => {
       // The button points to an id that does not exist: we must not lose the phrase.
       const body = '<p>Vive en <span class="su-tooltip-button" aria-describedby="missing">una casa</span> azul.</p>';
@@ -175,6 +196,15 @@ describe('articleParser', () => {
 
     it('never emits a script or a style', () => {
       const body = '<p>Hola<script>alert(1)</script><style>p{color:red}</style> mundo.</p>';
+      const article = parsePost(makePost({ content: { rendered: html(body) } }));
+
+      expect(textOf(article!.content[0])).toBe('Hola mundo.');
+    });
+
+    it('never emits the raw markup of a noscript', () => {
+      // The HTML library returns the inside of <noscript> as unparsed text: without a
+      // skip, the reader would see the literal `<img src=…>`.
+      const body = '<p>Hola <noscript><img src="https://holaquepasa.com/a.png" alt="a"></noscript>mundo.</p>';
       const article = parsePost(makePost({ content: { rendered: html(body) } }));
 
       expect(textOf(article!.content[0])).toBe('Hola mundo.');
