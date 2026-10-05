@@ -140,7 +140,8 @@ parsePost(post: unknown): ParsedArticle | null   // null = not usable, never thr
 Rules:
 
 - New dependency: **`node-html-parser`** (small, DOM-like). Regexes cannot reliably
-  handle the nested tooltip spans.
+  handle the nested tooltip spans. Pinned to version 7: version 9 pulls `entities@8`,
+  which requires Node ≥ 20.19, and nothing pins the Node version used on Railway.
 - Audio: `meta[itemprop=contentUrl]` and `meta[itemprop=duration]` (`PT3M52S` → 232).
 - Article body: only `<p>` elements that are direct children of the content root, minus
   those with a `powerpress_*` class. This drops the player, the image and the trailing
