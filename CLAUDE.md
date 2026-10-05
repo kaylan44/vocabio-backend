@@ -55,6 +55,7 @@ npx tsc --noEmit         # type-check without producing a build
 npm test                 # run jest (tests/**/*.test.ts)
 npm run dev              # local server with hot reload (tsx watch)
 npm run build            # compile to dist/
+npm run sync:articles    # one article sync pass, then exit (needs ARTICLES_SYNC_ENABLED=true)
 ```
 
 ## Git workflow (mandatory)

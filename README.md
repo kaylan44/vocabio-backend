@@ -306,6 +306,16 @@ URL found in the source's content is checked (https, host `holaquepasa.com`) bef
 stored or fetched; the MP3 download also refuses redirects, non-audio types and files over
 10 MB.
 
+**Running one sync by hand.** `npm run sync:articles` runs a single pass of the same job
+and exits, without starting the server. It needs `ARTICLES_SYNC_ENABLED="true"` like the
+timer, and exits with code 0 when the run completed, 1 when the sync is disabled or the
+source could not be reached.
+
+This is currently the only way to fill the tables in production: the source is behind
+Cloudflare and answers 403 to requests coming from Railway. Until the publisher allows the
+server, keep `ARTICLES_SYNC_ENABLED` off on Railway and run the command from a machine
+whose `DATABASE_URL` points to the production database.
+
 `GET /articles?level=easy&offset=0&limit=20` response:
 
 ```jsonc
