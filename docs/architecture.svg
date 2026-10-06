@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="568" viewBox="0 0 680 568" role="img" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>Vocabio global architecture</title>
+  <desc>The Expo app (iOS, Android, web on Vercel) signs in through Supabase Auth and calls the Express + Socket.io backend hosted on Railway, which reads and writes Supabase PostgreSQL through Prisma. GitHub deploys to Railway and the backend copies articles from Hola Qué Pasa.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .th { font-size: 14px; font-weight: 600; fill: #2C2C2A; }
+      .ts { font-size: 12px; fill: #5F5E5A; }
+      .box { fill: #FFFFFF; stroke: #B4B2A9; stroke-width: 1; }
+      .arr { stroke: #5F5E5A; stroke-width: 1.5; fill: none; }
+    </style>
+  </defs>
+
+  <!-- Solid background: the image must stay readable on GitHub's dark theme. -->
+  <rect x="0" y="0" width="680" height="568" fill="#FFFFFF"/>
+
+  <!-- Frontend -->
+  <rect x="40" y="40" width="600" height="132" rx="16" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text class="th" x="60" y="62" dominant-baseline="central" style="fill:#3C3489">Frontend: Vocabio app</text>
+  <text class="ts" x="60" y="80" dominant-baseline="central" style="fill:#534AB7">React Native · Expo · TypeScript</text>
+  <rect class="box" x="60" y="96" width="270" height="56" rx="8"/>
+  <text class="th" x="195" y="114" text-anchor="middle" dominant-baseline="central">iOS / Android</text>
+  <text class="ts" x="195" y="134" text-anchor="middle" dominant-baseline="central">Expo Go</text>
+  <rect class="box" x="350" y="96" width="270" height="56" rx="8"/>
+  <text class="th" x="485" y="114" text-anchor="middle" dominant-baseline="central">Web</text>
+  <text class="ts" x="485" y="134" text-anchor="middle" dominant-baseline="central">Static export on Vercel</text>
+
+  <!-- Frontend to Supabase Auth and to the backend -->
+  <line class="arr" x1="170" y1="172" x2="170" y2="230" marker-end="url(#arrow)"/>
+  <text class="ts" x="180" y="202" dominant-baseline="central">Google SSO → JWT</text>
+  <line class="arr" x1="485" y1="172" x2="485" y2="230" marker-end="url(#arrow)"/>
+  <text class="ts" x="495" y="202" dominant-baseline="central">REST + WebSocket, JWT</text>
+
+  <!-- Supabase -->
+  <rect x="40" y="232" width="260" height="200" rx="16" fill="#FAECE7" stroke="#993C1D" stroke-width="1"/>
+  <text class="th" x="60" y="254" dominant-baseline="central" style="fill:#712B13">Supabase</text>
+  <text class="ts" x="60" y="272" dominant-baseline="central" style="fill:#993C1D">Managed auth + database</text>
+  <rect class="box" x="60" y="288" width="220" height="56" rx="8"/>
+  <text class="th" x="170" y="306" text-anchor="middle" dominant-baseline="central">Supabase Auth</text>
+  <text class="ts" x="170" y="326" text-anchor="middle" dominant-baseline="central">Google SSO, JWT, JWKS</text>
+  <rect class="box" x="60" y="356" width="220" height="56" rx="8"/>
+  <text class="th" x="170" y="374" text-anchor="middle" dominant-baseline="central">PostgreSQL</text>
+  <text class="ts" x="170" y="394" text-anchor="middle" dominant-baseline="central">8 tables, RLS, no policy</text>
+
+  <!-- Railway -->
+  <rect x="380" y="232" width="260" height="200" rx="16" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text class="th" x="400" y="254" dominant-baseline="central" style="fill:#085041">Railway</text>
+  <text class="ts" x="400" y="272" dominant-baseline="central" style="fill:#0F6E56">Node.js container</text>
+  <rect class="box" x="400" y="288" width="220" height="56" rx="8"/>
+  <text class="th" x="510" y="306" text-anchor="middle" dominant-baseline="central">Express + Socket.io</text>
+  <text class="ts" x="510" y="326" text-anchor="middle" dominant-baseline="central">One HTTP server, TypeScript</text>
+  <rect class="box" x="400" y="356" width="220" height="56" rx="8"/>
+  <text class="th" x="510" y="374" text-anchor="middle" dominant-baseline="central">Prisma ORM</text>
+  <text class="ts" x="510" y="394" text-anchor="middle" dominant-baseline="central">Migrations run at start</text>
+
+  <!-- Backend and Supabase -->
+  <text class="ts" x="340" y="294" text-anchor="middle" dominant-baseline="central">JWKS</text>
+  <line class="arr" x1="400" y1="306" x2="283" y2="306" marker-end="url(#arrow)"/>
+  <line class="arr" x1="280" y1="330" x2="397" y2="330" marker-end="url(#arrow)"/>
+  <text class="ts" x="340" y="343" text-anchor="middle" dominant-baseline="central">webhook</text>
+  <text class="ts" x="340" y="372" text-anchor="middle" dominant-baseline="central">SQL</text>
+  <line class="arr" x1="400" y1="384" x2="283" y2="384" marker-end="url(#arrow)"/>
+
+  <!-- GitHub -->
+  <rect class="box" x="250" y="492" width="180" height="56" rx="8"/>
+  <text class="th" x="340" y="510" text-anchor="middle" dominant-baseline="central">GitHub</text>
+  <text class="ts" x="340" y="530" text-anchor="middle" dominant-baseline="central">Actions CI on pull requests</text>
+  <line class="arr" x1="410" y1="492" x2="410" y2="435" marker-end="url(#arrow)"/>
+  <text class="ts" x="400" y="455" text-anchor="end" dominant-baseline="central">build + deploy</text>
+
+  <!-- External article source: dashed because the sync is off by default -->
+  <rect class="box" x="480" y="492" width="160" height="56" rx="8"/>
+  <text class="th" x="560" y="510" text-anchor="middle" dominant-baseline="central">Hola Qué Pasa</text>
+  <text class="ts" x="560" y="530" text-anchor="middle" dominant-baseline="central">WordPress REST API</text>
+  <line class="arr" x1="590" y1="432" x2="590" y2="489" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+  <text class="ts" x="580" y="475" text-anchor="end" dominant-baseline="central">article sync</text>
+</svg>

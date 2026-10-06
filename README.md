@@ -37,23 +37,10 @@ mobile app. The backend only stores what users did with it.
 
 ## General architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   React Native App                  │
-│                                                     │
-│  ┌──────────────┐          ┌──────────────────────┐ │
-│  │ Supabase SDK │          │     Socket.io client │ │
-│  └──────┬───────┘          └──────────┬───────────┘ │
-└─────────┼────────────────────────────┼─────────────┘
-          │                            │
-          │ Auth (Google SSO)          │ WebSocket (JWT)
-          │ JWT                        │
-          ▼                            ▼
-┌─────────────────┐        ┌──────────────────────────┐
-│  Supabase Auth  │        │   Express + Socket.io    │
-│  + PostgreSQL   │◄───────│       (Railway)          │
-└─────────────────┘ Prisma └──────────────────────────┘
-```
+![Vocabio global architecture: the Expo app, Supabase, the backend on Railway, GitHub and the article source](docs/architecture.svg)
+
+The app never talks to PostgreSQL directly: every read and write goes through this backend.
+The dashed arrow is the article sync job, which only runs when `ARTICLES_SYNC_ENABLED` is `true`.
 
 ---
 
