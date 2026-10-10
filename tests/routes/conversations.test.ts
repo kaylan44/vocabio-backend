@@ -48,7 +48,7 @@ const mockGetOrCreate = getOrCreateConversation as jest.Mock;
 const mockGetUserConversations = getUserConversations as jest.Mock;
 
 // Crée une mini app Express avec seulement le router à tester
-// Pas besoin de démarrer tout app.ts (webhook, socket, etc.)
+// Pas besoin de démarrer tout app.ts (socket, etc.)
 const app = express();
 app.use(express.json());
 app.use('/conversations', conversationRouter);

@@ -58,8 +58,6 @@
   <!-- Backend and Supabase -->
   <text class="ts" x="340" y="294" text-anchor="middle" dominant-baseline="central">JWKS</text>
   <line class="arr" x1="400" y1="306" x2="283" y2="306" marker-end="url(#arrow)"/>
-  <line class="arr" x1="280" y1="330" x2="397" y2="330" marker-end="url(#arrow)"/>
-  <text class="ts" x="340" y="343" text-anchor="middle" dominant-baseline="central">webhook</text>
   <text class="ts" x="340" y="372" text-anchor="middle" dominant-baseline="central">SQL</text>
   <line class="arr" x1="400" y1="384" x2="283" y2="384" marker-end="url(#arrow)"/>
 
