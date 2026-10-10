@@ -4,11 +4,33 @@
 // Les routes appellent ces fonctions plutôt que Prisma directement,
 // ce qui permet de tester la logique sans passer par HTTP.
 
-import { prisma } from '../lib/prisma';
+import * as userRepository from '../repositories/userRepository';
+import { PublicUser } from '../repositories/userRepository';
 
 // Plafond de sécurité : la liste est chargée d'un bloc par l'app (pas de pagination).
 // Au-delà, l'écran bascule naturellement sur la recherche par nom.
 export const LIST_USERS_LIMIT = 100;
+// Limite à 20 résultats pour ne pas surcharger le client mobile
+export const SEARCH_USERS_LIMIT = 20;
+
+/**
+ * Makes sure the authenticated user has a row in our database.
+ *
+ * Called on every authenticated HTTP request (src/middleware/auth.ts) and on every
+ * Socket.io handshake (src/sockets/index.ts). Both used to write the same Prisma
+ * upsert themselves; they now share this single entry point.
+ *
+ * Nominal case: the Postgres trigger on auth.users (sync_auth_users migration) already
+ * created the user, and nothing changes. Catch-up case: the trigger did not run (e.g. a
+ * database without it), and the user is silently created here.
+ *
+ * Existing data is never overwritten (see upsertUser).
+ *
+ * @param user - Identity read from the verified JWT, never from a request body
+ */
+export const ensureUser = async (user: PublicUser): Promise<void> => {
+  await userRepository.upsertUser(user);
+};
 
 /**
  * Liste les utilisateurs par ordre alphabétique, sans l'utilisateur connecté.
@@ -17,12 +39,7 @@ export const LIST_USERS_LIMIT = 100;
  * @param excludeUserId - L'ID de l'utilisateur connecté
  */
 export const listUsers = async (excludeUserId: string) => {
-  return prisma.user.findMany({
-    where: { NOT: { id: excludeUserId } },
-    select: { id: true, username: true, avatarUrl: true },
-    orderBy: { username: 'asc' },
-    take: LIST_USERS_LIMIT,
-  });
+  return userRepository.findUsers(excludeUserId, LIST_USERS_LIMIT);
 };
 
 /**
@@ -40,21 +57,6 @@ export const searchUsers = async (query: string, excludeUserId: string) => {
     return [];
   }
 
-  return prisma.user.findMany({
-    where: {
-      username: {
-        contains: query.trim(),
-        mode: 'insensitive', // Équivalent ILIKE en PostgreSQL
-      },
-      // On exclut l'utilisateur connecté de ses propres résultats de recherche
-      NOT: { id: excludeUserId },
-    },
-    // On ne retourne que les champs nécessaires (jamais de données sensibles)
-    select: {
-      id: true,
-      username: true,
-      avatarUrl: true,
-    },
-    take: 20, // Limite à 20 résultats pour ne pas surcharger le client mobile
-  });
+  // On exclut l'utilisateur connecté de ses propres résultats de recherche
+  return userRepository.searchUsersByUsername(query.trim(), excludeUserId, SEARCH_USERS_LIMIT);
 };

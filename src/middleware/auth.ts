@@ -16,7 +16,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getSigningKey, SUPABASE_JWT_ALGORITHMS, SupabaseJwtPayload } from '../lib/jwt';
-import { prisma } from '../lib/prisma';
+import { ensureUser } from '../services/userService';
 import { AuthUser } from '../types';
 
 // ─────────────────────────────────────────────
@@ -59,17 +59,9 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
       // already created the user → update: {} changes nothing.
       // Catch-up case: the trigger did not run (e.g. a database without it) → the
       // user is silently created here.
-      await prisma.user.upsert({
-        where: { id: payload.sub },
-        create: {
-          id: payload.sub,
-          username,
-          avatarUrl,
-        },
-        // On ne met pas à jour les données existantes pour ne pas écraser
-        // d'éventuelles modifications manuelles (ex: username personnalisé)
-        update: {},
-      });
+      // The write itself lives in userService.ensureUser, shared with the Socket.io
+      // handshake: a middleware must not query the database directly.
+      await ensureUser({ id: payload.sub, username, avatarUrl });
 
       // 5. Attacher l'utilisateur authentifié à la requête pour les handlers suivants
       (req as Request & { user: AuthUser }).user = {
