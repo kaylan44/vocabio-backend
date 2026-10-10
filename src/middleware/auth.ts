@@ -4,7 +4,7 @@
 // Son rôle :
 //   1. Extraire le JWT du header Authorization
 //   2. Vérifier sa signature avec la clé publique Supabase (via JWKS)
-//   3. Faire un upsert lazy du user en base (au cas où le webhook d'inscription aurait raté)
+//   3. Faire un upsert lazy du user en base (au cas où le trigger sur auth.users n'aurait pas tourné)
 //   4. Attacher req.user pour les handlers suivants
 //
 // Pourquoi JWKS et pas un secret partagé ?
@@ -55,8 +55,10 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
 
     try {
       // 4. Upsert lazy : créer le user s'il n'existe pas encore en base.
-      // Cas nominal : le webhook Supabase a déjà créé le user → update: {} ne modifie rien.
-      // Cas de rattrapage : webhook raté → on crée le user ici silencieusement.
+      // Nominal case: the Postgres trigger on auth.users (sync_auth_users migration)
+      // already created the user → update: {} changes nothing.
+      // Catch-up case: the trigger did not run (e.g. a database without it) → the
+      // user is silently created here.
       await prisma.user.upsert({
         where: { id: payload.sub },
         create: {

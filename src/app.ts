@@ -21,7 +21,6 @@ import { createServer } from 'http';
 import { allowedOrigins } from './lib/cors';
 import { initSocket } from './lib/socket';
 import { initSocketHandlers } from './sockets';
-import webhookRouter from './routes/webhooks';
 import userRouter from './routes/users';
 import conversationRouter from './routes/conversations';
 import messageRouter from './routes/messages';
@@ -39,17 +38,7 @@ const app = express();
 // avant que authMiddleware ne les rejette en 401 (ils n'ont pas de token).
 app.use(cors({ origin: allowedOrigins }));
 
-// Webhook Supabase : on a besoin du body brut (string) pour vérifier le HMAC.
-// On monte cette route AVANT express.json() pour capter le body non parsé.
-app.use('/webhooks', express.raw({ type: 'application/json' }), (req, _res, next) => {
-  // Convertit le Buffer en objet JS pour que la route webhook puisse le lire normalement
-  if (Buffer.isBuffer(req.body)) {
-    req.body = JSON.parse(req.body.toString());
-  }
-  next();
-}, webhookRouter);
-
-// Pour toutes les autres routes : parse le body JSON automatiquement
+// Parse le body JSON automatiquement
 app.use(express.json());
 
 // ─────────────────────────────────────────────
