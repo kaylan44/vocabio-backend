@@ -5,7 +5,8 @@
 //   - Lister les conversations d'un utilisateur avec les métadonnées d'affichage
 //   - Vérifier qu'un utilisateur est bien participant d'une conversation (guard de sécurité)
 
-import { prisma } from '../lib/prisma';
+import * as conversationRepository from '../repositories/conversationRepository';
+import * as messageRepository from '../repositories/messageRepository';
 
 // ─────────────────────────────────────────────
 // getOrCreateConversation
@@ -25,45 +26,14 @@ import { prisma } from '../lib/prisma';
  */
 export const getOrCreateConversation = async (userId: string, recipientId: string) => {
   // Étape 1 : chercher une conversation existante entre les deux utilisateurs.
-  // La requête : "trouve une conversation dont les participants incluent userId
-  // ET dont les participants incluent recipientId"
-  const existing = await prisma.conversation.findFirst({
-    where: {
-      AND: [
-        { participants: { some: { userId } } },
-        { participants: { some: { userId: recipientId } } },
-      ],
-    },
-    // On inclut les participants pour pouvoir les retourner au client
-    include: {
-      participants: {
-        include: { user: { select: { id: true, username: true, avatarUrl: true } } },
-      },
-    },
-  });
+  const existing = await conversationRepository.findConversationBetween(userId, recipientId);
 
   if (existing) {
     return existing;
   }
 
   // Étape 2 : aucune conversation trouvée → on en crée une nouvelle.
-  // On crée la conversation ET les deux participants en une seule opération Prisma
-  // grâce aux "nested creates" (create imbriqué).
-  return prisma.conversation.create({
-    data: {
-      participants: {
-        create: [
-          { userId },          // L'utilisateur connecté
-          { userId: recipientId }, // Le destinataire
-        ],
-      },
-    },
-    include: {
-      participants: {
-        include: { user: { select: { id: true, username: true, avatarUrl: true } } },
-      },
-    },
-  });
+  return conversationRepository.createConversation(userId, recipientId);
 };
 
 // ─────────────────────────────────────────────
@@ -82,31 +52,10 @@ export const getOrCreateConversation = async (userId: string, recipientId: strin
  * on pourra basculer sur prisma.$queryRaw (voir PLAN.md).
  */
 export const getUserConversations = async (userId: string) => {
-  // Récupère toutes les conversations de l'user avec leurs participants et messages
-  const conversations = await prisma.conversation.findMany({
-    where: {
-      participants: { some: { userId } },
-    },
-    include: {
-      participants: {
-        include: { user: { select: { id: true, username: true, avatarUrl: true } } },
-      },
-      // On prend uniquement le dernier message (orderBy + take: 1)
-      messages: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: {
-          id: true,
-          content: true,
-          createdAt: true,
-          senderId: true,
-          readAt: true,
-        },
-      },
-    },
-    // Pas de orderBy ici : on trie après enrichissement par lastMessage.createdAt
-    // (Prisma ne supporte pas orderBy sur une relation agrégée dans findMany)
-  });
+  // Récupère toutes les conversations de l'user avec leurs participants et leur dernier message.
+  // Pas triées : on trie après enrichissement par lastMessage.createdAt
+  // (Prisma ne supporte pas orderBy sur une relation agrégée dans findMany)
+  const conversations = await conversationRepository.findConversationsOf(userId);
 
   // Pour chaque conversation, on compte les messages non lus séparément.
   // Prisma ne supporte pas COUNT dans un include, donc on fait des requêtes parallèles.
@@ -116,19 +65,13 @@ export const getUserConversations = async (userId: string) => {
       const otherParticipant = conv.participants.find((p) => p.userId !== userId);
 
       // Compte les messages non lus : envoyés par l'autre, pas encore lus
-      const unreadCount = await prisma.message.count({
-        where: {
-          conversationId: conv.id,
-          senderId: { not: userId }, // Messages envoyés par l'autre participant
-          readAt: null,              // Pas encore lus (readAt NULL = non lu)
-        },
-      });
+      const unreadCount = await messageRepository.countUnreadMessages(conv.id, userId);
 
       return {
         id: conv.id,
         createdAt: conv.createdAt,
         otherParticipant: otherParticipant?.user ?? null,
-        lastMessage: conv.messages[0] ?? null,
+        lastMessage: conv.lastMessage,
         unreadCount,
       };
     })
@@ -161,12 +104,7 @@ export const getUserConversations = async (userId: string) => {
  * et s'il ne throw pas, on sait que l'accès est autorisé.
  */
 export const assertParticipant = async (conversationId: string, userId: string): Promise<void> => {
-  const participant = await prisma.participant.findUnique({
-    where: {
-      // La clé primaire composite de la table participants
-      conversationId_userId: { conversationId, userId },
-    },
-  });
+  const participant = await conversationRepository.isParticipant(conversationId, userId);
 
   if (!participant) {
     // On utilise une erreur avec un code personnalisé pour que le handler

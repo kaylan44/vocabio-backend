@@ -8,8 +8,9 @@
 // Flux : REST handler → createMessage() → persiste + émet Socket
 //        Socket handler → createMessage() → persiste + émet Socket
 
-import { prisma } from '../lib/prisma';
 import { getIO, userRoom } from '../lib/socket';
+import * as conversationRepository from '../repositories/conversationRepository';
+import * as messageRepository from '../repositories/messageRepository';
 
 /**
  * Rooms à notifier pour un événement de conversation : la room de la conversation
@@ -18,11 +19,8 @@ import { getIO, userRoom } from '../lib/socket';
  * Socket.io dédoublonne : un socket présent dans plusieurs rooms ne reçoit l'événement qu'une fois.
  */
 const conversationRooms = async (conversationId: string): Promise<string[]> => {
-  const participants = await prisma.participant.findMany({
-    where: { conversationId },
-    select: { userId: true },
-  });
-  return [conversationId, ...participants.map((p) => userRoom(p.userId))];
+  const userIds = await conversationRepository.findParticipantUserIds(conversationId);
+  return [conversationId, ...userIds.map((userId) => userRoom(userId))];
 };
 
 // ─────────────────────────────────────────────
@@ -46,21 +44,7 @@ export const createMessage = async (
   content: string
 ) => {
   // Étape 1 : Persister le message en base de données
-  const message = await prisma.message.create({
-    data: {
-      conversationId,
-      senderId,
-      content,
-      // readAt reste NULL : le message est non lu jusqu'à ce que le destinataire ouvre la conv
-    },
-    // On inclut les infos de l'expéditeur pour ne pas avoir à faire
-    // une deuxième requête côté client pour afficher son nom/avatar
-    include: {
-      sender: {
-        select: { id: true, username: true, avatarUrl: true },
-      },
-    },
-  });
+  const message = await messageRepository.createMessage(conversationId, senderId, content);
 
   // Étape 2 : Diffuser le message en temps réel via Socket.io
   // Cible la room de la conversation ET la room personnelle de chaque participant,
@@ -104,17 +88,7 @@ export const getMessages = async (
   offset: number = 0,
   limit: number = 30
 ) => {
-  return prisma.message.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'desc' }, // Plus récents d'abord
-    skip: offset,
-    take: limit,
-    include: {
-      sender: {
-        select: { id: true, username: true, avatarUrl: true },
-      },
-    },
-  });
+  return messageRepository.findMessages(conversationId, offset, limit);
 };
 
 // ─────────────────────────────────────────────
@@ -145,18 +119,11 @@ export const markConversationAsRead = async (
   const readAt = new Date();
 
   // UPDATE en masse : tous les messages non lus envoyés par l'autre participant
-  const result = await prisma.message.updateMany({
-    where: {
-      conversationId,
-      senderId: { not: userId }, // Seulement les messages reçus, pas envoyés
-      readAt: null,              // Seulement les messages pas encore lus
-    },
-    data: { readAt },
-  });
+  const count = await messageRepository.markMessagesAsRead(conversationId, userId, readAt);
 
   // Notifier les autres participants via Socket.io que les messages ont été lus
   // Utile pour afficher les indicateurs de lecture (✓✓) côté expéditeur
-  if (result.count > 0) {
+  if (count > 0) {
     try {
       // Rooms personnelles incluses : l'expéditeur voit ses messages lus même hors
       // de la conversation, et les autres appareils du lecteur remettent le badge à zéro.
@@ -172,5 +139,5 @@ export const markConversationAsRead = async (
   }
 
   // Retourne le nombre de messages effectivement marqués comme lus
-  return result.count;
+  return count;
 };
