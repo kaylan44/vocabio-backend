@@ -395,6 +395,7 @@ element pointed directly at this URL would not work on web, because it cannot se
 | Method | Route | Protection | Description |
 |---|---|---|---|
 | `GET` | `/health` | None (public) | Health check used by Railway, returns `{ status, timestamp }` |
+
 ---
 
 ## Socket.io events (real time)
