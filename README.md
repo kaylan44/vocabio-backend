@@ -42,6 +42,18 @@ mobile app. The backend only stores what users did with it.
 The app never talks to PostgreSQL directly: every read and write goes through this backend.
 The dashed arrow is the article sync job, which only runs when `ARTICLES_SYNC_ENABLED` is `true`.
 
+Inside the backend, the code is organized in layers, each one calling only the next:
+
+| Layer | Folder | Role |
+|---|---|---|
+| Routes and Socket handlers | `src/routes/`, `src/sockets/` | Transport: read the input, validate it, choose the status code or the event |
+| Services | `src/services/` | Business rules: who may do what, limits, computations, real-time emission |
+| Repositories | `src/repositories/` | Database access: the only files that import Prisma |
+
+A service never builds a query, and a repository never takes a business decision.
+A test (`tests/repositories/boundary.test.ts`) fails if a file outside `src/repositories/`
+imports Prisma.
+
 ---
 
 ## Authentication flow

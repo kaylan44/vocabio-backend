@@ -16,10 +16,20 @@ Functional details: `README.md`. Historical implementation plan: `PLAN.md`.
 
 ## Architecture and conventions (must be followed)
 
-- **routes → services → prisma**:
+- **routes → services → repositories → prisma**:
   - `src/routes/*`: HTTP only (reading `req`, input validation, status codes).
     No direct Prisma query inside a route.
-  - `src/services/*`: all business logic and database access.
+  - `src/services/*`: all business logic (permissions, limits, computations,
+    Socket emission). A service never imports Prisma: it calls a repository.
+  - `src/repositories/*`: the only files that import Prisma. Queries and the
+    mapping of Prisma results to plain objects, with explicit return types.
+    No business decision, no status code. A write that must be atomic stays in
+    ONE repository function (nested create).
+  - The middleware and the Socket.io handshake follow the same rule: they call
+    a service (`userService.ensureUser`), never Prisma.
+  - Guarded by `tests/repositories/boundary.test.ts`, which fails when a file
+    outside `src/repositories/` imports Prisma. Its two exceptions are listed
+    in the test.
   - `src/sockets/handlers.ts`: calls the **same** services as the routes.
     Core rule: `messageService.createMessage` is the single path for creating
     a message (REST and Socket); it persists, then emits `new_message`.
@@ -27,11 +37,14 @@ Functional details: `README.md`. Historical implementation plan: `PLAN.md`.
   `assertParticipant` in `conversationService.ts`). Routes catch it and
   delegate to `handleError(res, error, 'METHOD /route')` (`src/utils/errors.ts`).
   Never send the message of a 500 error back to the client.
+  A service never tests a Prisma error code: repositories translate the ones a
+  service reacts to (`UniqueConstraintError` in `src/repositories/errors.ts`).
 - **Validation**: done manually in routes for now (no zod).
   Introducing a validation library is a feature of its own, on its own branch.
 - **Security**: every route/event touching a conversation calls
   `assertParticipant` before acting. Every route goes through `authMiddleware`.
-- **Singletons**: Prisma via `src/lib/prisma.ts`, Socket.io via `getIO()` from `src/lib/socket.ts`.
+- **Singletons**: Prisma via `src/lib/prisma.ts` (imported by repositories only),
+  Socket.io via `getIO()` from `src/lib/socket.ts`.
 - **Prisma migrations**: never modify a migration that has already been applied
   (`prisma/migrations/*`). Always create a new migration.
 - **Style**: strict TypeScript.
