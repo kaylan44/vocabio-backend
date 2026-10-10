@@ -479,7 +479,6 @@ GitHub Actions workflow: `.github/workflows/ci.yml`.
 - Initialize the Express + TypeScript project
 - Configure Prisma + Supabase PostgreSQL connection
 - Supabase JWT verification middleware
-- Supabase webhook → user creation in the database
 - Railway deployment
 
 ### Step 2 — Conversations & Messages (REST)
