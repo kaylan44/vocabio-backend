@@ -11,8 +11,8 @@
 // acceptable because a user can only falsify their own statistics: the user id
 // always comes from the JWT, never from the request body.
 
-import { Prisma } from '@prisma/client';
-import { prisma } from '../lib/prisma';
+import { UniqueConstraintError } from '../repositories/errors';
+import * as quizRepository from '../repositories/quizRepository';
 
 // ─────────────────────────────────────────────
 // Allowed values and limits
@@ -64,17 +64,6 @@ const httpError = (statusCode: number, message: string): Error => {
   return err;
 };
 
-// Fields returned to the client for a session. `userId` is selected as well, but
-// only to check the owner: it is removed before returning (see resolveExisting).
-const SESSION_SELECT = {
-  id: true,
-  userId: true,
-  mode: true,
-  score: true,
-  total: true,
-  createdAt: true,
-} as const;
-
 // ─────────────────────────────────────────────
 // resolveExisting (security guard)
 // ─────────────────────────────────────────────
@@ -89,10 +78,9 @@ const SESSION_SELECT = {
  * @throws 409 if the id is already used by another user (generic message, no data)
  */
 const resolveExisting = async (sessionId: string, userId: string) => {
-  const existing = await prisma.quizSession.findUnique({
-    where: { id: sessionId },
-    select: SESSION_SELECT,
-  });
+  // `userId` comes back with the session, but only to check the owner: it is removed
+  // before returning.
+  const existing = await quizRepository.findSessionById(sessionId);
 
   if (!existing) {
     return null;
@@ -146,11 +134,7 @@ export const createQuizSession = async (
   // Known limit: "check then create" is not atomic. Two requests with DIFFERENT ids
   // sent at the same instant can both pass. Accepted: the goal is to stop a loop
   // from filling the table, not to be exact.
-  const latest = await prisma.quizSession.findFirst({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, createdAt: true },
-  });
+  const latest = await quizRepository.findLatestSessionOf(userId);
 
   // Pitfall: the latest session can be the very one we were asked to create. It
   // happens when the app sends the same quiz twice at the same instant: the other
@@ -181,36 +165,25 @@ export const createQuizSession = async (
   const total = answers.length;
 
   try {
-    // Step 4: one nested create = one transaction. Either the session and all its
-    // answers are stored, or nothing is: no session without its answers.
-    const created = await prisma.quizSession.create({
-      data: {
-        id: sessionId,
-        userId,
-        mode,
-        score,
-        total,
-        answers: {
-          create: answers.map((answer, position) => ({
-            position, // index in the array = order of the question in the quiz
-            wordId: answer.wordId,
-            category: answer.category,
-            level: answer.level,
-            isCorrect: answer.isCorrect,
-          })),
-        },
-      },
-      select: SESSION_SELECT,
+    // Step 4: the session and all its answers are stored together, or nothing is
+    // (one transaction, see createSessionWithAnswers): no session without its answers.
+    const created = await quizRepository.createSessionWithAnswers({
+      id: sessionId,
+      userId,
+      mode,
+      score,
+      total,
+      answers,
     });
 
     const { userId: _owner, ...session } = created;
     return { session, created: true };
   } catch (error) {
-    // Step 5: P2002 = unique constraint violation. It happens when two identical
+    // Step 5: unique constraint violation. It happens when two identical
     // requests race: both passed step 1, one insert won, this one lost on the
     // primary key. The session exists now, so we treat it as a replay.
     // We go through resolveExisting again so the owner check also applies here.
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    if (error instanceof UniqueConstraintError) {
       const raced = await resolveExisting(sessionId, userId);
       if (raced) {
         return { session: raced, created: false };
@@ -274,8 +247,7 @@ const foldByKey = (
  * Aggregated quiz statistics of one user.
  *
  * Four GROUP BY queries run in parallel, then the result is shaped in memory.
- * Every query is filtered by `userId`: sessions directly, answers through their
- * session (`session: { userId }`), because QuizAnswer has no userId column.
+ * Every query is filtered by `userId` (see the security note in quizRepository.ts).
  *
  * The response only contains `wordId` for missed words: the app owns the
  * vocabulary and resolves the id to the actual word.
@@ -284,49 +256,21 @@ const foldByKey = (
  */
 export const getQuizStats = async (userId: string) => {
   const [sessionsByMode, answersByCategory, answersByLevel, missedWords] = await Promise.all([
-    // score and total are stored on the session, so these totals need no join.
-    prisma.quizSession.groupBy({
-      by: ['mode'],
-      where: { userId },
-      _count: { _all: true },
-      _sum: { score: true, total: true },
-      _max: { createdAt: true },
-    }),
-    prisma.quizAnswer.groupBy({
-      by: ['category', 'isCorrect'],
-      where: { session: { userId } },
-      _count: { _all: true },
-    }),
-    prisma.quizAnswer.groupBy({
-      by: ['level', 'isCorrect'],
-      where: { session: { userId } },
-      _count: { _all: true },
-    }),
-    // Words answered wrong most often. Secondary sort on wordId: without it, words
-    // with the same count could come back in a different order on each call.
-    prisma.quizAnswer.groupBy({
-      by: ['wordId'],
-      where: { session: { userId }, isCorrect: false },
-      _count: { wordId: true },
-      orderBy: [{ _count: { wordId: 'desc' } }, { wordId: 'asc' }],
-      take: MOST_MISSED_LIMIT,
-    }),
+    quizRepository.sumSessionsByMode(userId),
+    quizRepository.countAnswersByCategory(userId),
+    quizRepository.countAnswersByLevel(userId),
+    quizRepository.findMostMissedWords(userId, MOST_MISSED_LIMIT),
   ]);
 
   const byMode = sessionsByMode
-    .map((row) => {
-      // _sum is null when the group is empty; cannot happen for an existing group,
-      // but the generated type says "number | null", hence the fallback.
-      const answers = row._sum.total ?? 0;
-      const correct = row._sum.score ?? 0;
-      return {
-        mode: row.mode,
-        sessions: row._count._all,
-        answers,
-        correct,
-        accuracy: toAccuracy(correct, answers),
-      };
-    })
+    .map((row) => ({
+      mode: row.mode,
+      sessions: row.sessions,
+      // One question = one answer, and the score is the number of correct ones.
+      answers: row.total,
+      correct: row.score,
+      accuracy: toAccuracy(row.score, row.total),
+    }))
     .sort(
       (a, b) =>
         QUIZ_MODES.indexOf(a.mode as QuizMode) - QUIZ_MODES.indexOf(b.mode as QuizMode)
@@ -338,30 +282,22 @@ export const getQuizStats = async (userId: string) => {
 
   // Most recent session over all modes = the latest of the per-mode maximums.
   const lastSessionAt = sessionsByMode.reduce<Date | null>((latest, row) => {
-    const candidate = row._max.createdAt;
+    const candidate = row.lastSessionAt;
     if (candidate && (!latest || candidate > latest)) {
       return candidate;
     }
     return latest;
   }, null);
 
-  const byCategory = foldByKey(
-    answersByCategory.map((row) => ({
-      key: row.category,
-      isCorrect: row.isCorrect,
-      count: row._count._all,
-    })),
-    QUIZ_CATEGORIES
-  ).map(({ key, ...rest }) => ({ category: key, ...rest }));
+  const byCategory = foldByKey(answersByCategory, QUIZ_CATEGORIES).map(({ key, ...rest }) => ({
+    category: key,
+    ...rest,
+  }));
 
-  const byLevel = foldByKey(
-    answersByLevel.map((row) => ({
-      key: row.level,
-      isCorrect: row.isCorrect,
-      count: row._count._all,
-    })),
-    QUIZ_LEVELS
-  ).map(({ key, ...rest }) => ({ level: key, ...rest }));
+  const byLevel = foldByKey(answersByLevel, QUIZ_LEVELS).map(({ key, ...rest }) => ({
+    level: key,
+    ...rest,
+  }));
 
   return {
     totalSessions,
@@ -372,10 +308,7 @@ export const getQuizStats = async (userId: string) => {
     byMode,
     byCategory,
     byLevel,
-    mostMissedWords: missedWords.map((row) => ({
-      wordId: row.wordId,
-      wrong: row._count.wordId,
-    })),
+    mostMissedWords: missedWords,
   };
 };
 
@@ -407,18 +340,9 @@ export const getQuizStats = async (userId: string) => {
  * @param userId - Authenticated user (from the JWT)
  */
 export const getWordProgress = async (userId: string) => {
-  const answers = await prisma.quizAnswer.findMany({
-    where: { session: { userId } },
-    select: {
-      wordId: true,
-      isCorrect: true,
-      session: { select: { mode: true, createdAt: true } },
-    },
-    // Oldest first, then the order of the questions inside a quiz. sessionId breaks
-    // the tie between two sessions created at the same millisecond, so their answers
-    // are never interleaved.
-    orderBy: [{ session: { createdAt: 'asc' } }, { sessionId: 'asc' }, { position: 'asc' }],
-  });
+  // Oldest first: the order is guaranteed by the repository, and the streak below is
+  // only right because of it.
+  const answers = await quizRepository.findAnswersOldestFirst(userId);
 
   const progress = new Map<
     string,
@@ -433,7 +357,7 @@ export const getWordProgress = async (userId: string) => {
   >();
 
   for (const answer of answers) {
-    const { mode, createdAt } = answer.session;
+    const { mode, createdAt } = answer;
     // '|' cannot appear in a mode, so two different (wordId, mode) pairs never collide.
     const key = `${mode}|${answer.wordId}`;
     const entry = progress.get(key) ?? {
