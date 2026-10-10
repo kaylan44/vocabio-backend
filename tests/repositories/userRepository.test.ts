@@ -13,10 +13,18 @@ jest.mock('../../src/lib/prisma', () => ({
   },
 }));
 
-import { upsertUser } from '../../src/repositories/userRepository';
+import {
+  findUsers,
+  searchUsersByUsername,
+  upsertUser,
+} from '../../src/repositories/userRepository';
 import { prisma } from '../../src/lib/prisma';
 
 const mockUpsert = prisma.user.upsert as jest.Mock;
+const mockFindMany = prisma.user.findMany as jest.Mock;
+
+// The only user fields that may leave the database through this repository.
+const PUBLIC_USER_FIELDS = { id: true, username: true, avatarUrl: true };
 
 describe('userRepository', () => {
   beforeEach(() => jest.resetAllMocks());
@@ -41,6 +49,43 @@ describe('userRepository', () => {
       await expect(
         upsertUser({ id: 'user-1', username: 'Alice', avatarUrl: null })
       ).rejects.toThrow('db down');
+    });
+  });
+
+  describe('findUsers', () => {
+    it('excludes the given user, sorts by username and applies the limit', async () => {
+      const users = [{ id: 'user-2', username: 'Bob', avatarUrl: null }];
+      mockFindMany.mockResolvedValue(users);
+
+      const result = await findUsers('user-1', 100);
+
+      expect(result).toEqual(users);
+      expect(mockFindMany).toHaveBeenCalledWith({
+        where: { NOT: { id: 'user-1' } },
+        select: PUBLIC_USER_FIELDS,
+        orderBy: { username: 'asc' },
+        take: 100,
+      });
+    });
+  });
+
+  describe('searchUsersByUsername', () => {
+    it('searches a part of the username whatever the case, without the given user', async () => {
+      const users = [{ id: 'user-2', username: 'Alice', avatarUrl: null }];
+      mockFindMany.mockResolvedValue(users);
+
+      const result = await searchUsersByUsername('ali', 'user-1', 20);
+
+      expect(result).toEqual(users);
+      expect(mockFindMany).toHaveBeenCalledWith({
+        where: {
+          // contains + insensitive = ILIKE '%ali%': "ali" must find "Alice".
+          username: { contains: 'ali', mode: 'insensitive' },
+          NOT: { id: 'user-1' },
+        },
+        select: PUBLIC_USER_FIELDS,
+        take: 20,
+      });
     });
   });
 });
