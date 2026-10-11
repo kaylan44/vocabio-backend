@@ -144,6 +144,21 @@ describe('quizRepository', () => {
       expect(error.message).not.toContain('QuizSession');
     });
 
+    it('keeps the original Prisma error as the cause, so the logs still name the constraint', async () => {
+      const prismaError = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['id'] },
+      });
+      mockCreate.mockRejectedValue(prismaError);
+
+      const error = await createSessionWithAnswers(newSession).catch((e) => e);
+
+      // The SAME object: its code, its meta.target and its stack are what make an
+      // unexpected unique violation diagnosable.
+      expect(error.cause).toBe(prismaError);
+    });
+
     it('lets any other database error through as the same object', async () => {
       const dbError = new Error('connection lost');
       mockCreate.mockRejectedValue(dbError);
