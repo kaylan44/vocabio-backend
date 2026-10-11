@@ -1,23 +1,20 @@
 // Unit tests of the article ingestion service.
 //
-// Mocked: Prisma (no database) and the source client (no network). The parser is
-// REAL: it is pure, and going through it checks that the ingestion and the parser
-// agree on the shape of an article.
+// Mocked: the article repository (no database) and the source client (no network).
+// The parser is REAL: it is pure, and going through it checks that the ingestion and
+// the parser agree on the shape of an article.
 //
 // As everywhere in this project, these tests check the logic of the service (what it
-// stores, what it skips, what it survives), not that the queries are valid SQL.
+// stores, what it skips, what it survives), not that the queries are valid SQL. How
+// the repository writes an article and its audio in one transaction, and that it never
+// loads audio bytes to know what is stored, is checked in
+// tests/repositories/articleRepository.test.ts.
 
-jest.mock('../../src/lib/prisma', () => ({
-  prisma: {
-    article: {
-      findMany: jest.fn(),
-      create: jest.fn(),
-      deleteMany: jest.fn(),
-    },
-    articleAudio: {
-      create: jest.fn(),
-    },
-  },
+jest.mock('../../src/repositories/articleRepository', () => ({
+  findStoredByExternalIds: jest.fn(),
+  createArticle: jest.fn(),
+  addArticleAudio: jest.fn(),
+  deleteArticlesOlderThan: jest.fn(),
 }));
 
 // Partial mock: the two network functions are replaced, isSourceUrl and the category
@@ -28,9 +25,10 @@ jest.mock('../../src/lib/holaQuePasa', () => ({
   downloadAudio: jest.fn(),
 }));
 
-import { Prisma } from '@prisma/client';
-import { prisma } from '../../src/lib/prisma';
 import { downloadAudio, fetchLatestPosts } from '../../src/lib/holaQuePasa';
+import * as articleRepository from '../../src/repositories/articleRepository';
+// NOT mocked: the real class, the same one the service detects with `instanceof`.
+import { UniqueConstraintError } from '../../src/repositories/errors';
 import {
   ARTICLE_LANG,
   ARTICLE_SOURCE,
@@ -41,10 +39,10 @@ import {
 
 const mockFetchLatestPosts = fetchLatestPosts as jest.Mock;
 const mockDownloadAudio = downloadAudio as jest.Mock;
-const mockFindMany = prisma.article.findMany as jest.Mock;
-const mockCreate = prisma.article.create as jest.Mock;
-const mockDeleteMany = prisma.article.deleteMany as jest.Mock;
-const mockAudioCreate = prisma.articleAudio.create as jest.Mock;
+const mockFindStored = articleRepository.findStoredByExternalIds as jest.Mock;
+const mockCreate = articleRepository.createArticle as jest.Mock;
+const mockPurge = articleRepository.deleteArticlesOlderThan as jest.Mock;
+const mockAddAudio = articleRepository.addArticleAudio as jest.Mock;
 
 // ─────────────────────────────────────────────
 // Test data
@@ -71,11 +69,9 @@ const makePost = (id: number, dateGmt = '2026-10-04T12:00:00', withAudio = true)
 
 const MP3 = { data: Buffer.from([0xff, 0xf3, 0x84, 0x01]), mimeType: 'audio/mpeg' };
 
-const uniqueViolation = () =>
-  new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-    code: 'P2002',
-    clientVersion: 'test',
-  });
+// What the repository throws when the article (or its audio) is already stored: it
+// translates Prisma's P2002 (see articleRepository.test.ts).
+const uniqueViolation = () => new UniqueConstraintError();
 
 describe('articleIngestService.runIngestion', () => {
   beforeEach(() => {
@@ -84,10 +80,10 @@ describe('articleIngestService.runIngestion', () => {
     jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     // Defaults: nothing stored yet, every write succeeds, nothing to purge.
-    mockFindMany.mockResolvedValue([]);
-    mockCreate.mockResolvedValue({});
-    mockAudioCreate.mockResolvedValue({});
-    mockDeleteMany.mockResolvedValue({ count: 0 });
+    mockFindStored.mockResolvedValue([]);
+    mockCreate.mockResolvedValue(undefined);
+    mockAddAudio.mockResolvedValue(undefined);
+    mockPurge.mockResolvedValue(0);
     mockDownloadAudio.mockResolvedValue(MP3);
   });
 
@@ -99,20 +95,9 @@ describe('articleIngestService.runIngestion', () => {
     await runIngestion(NOW);
 
     expect(mockFetchLatestPosts).toHaveBeenCalledWith(INGEST_BATCH_SIZE);
-    expect(mockFindMany.mock.calls[0][0].where).toEqual({
-      source: ARTICLE_SOURCE,
-      externalId: { in: ['1', '2'] },
-    });
-  });
-
-  it('never loads audio bytes when checking what is already stored', async () => {
-    mockFetchLatestPosts.mockResolvedValue([makePost(1)]);
-
-    await runIngestion(NOW);
-
-    // `audio` may only select its key: selecting `data` here would load every MP3
-    // of the batch into memory on each run.
-    expect(mockFindMany.mock.calls[0][0].select.audio).toEqual({ select: { articleId: true } });
+    // One lookup for the whole batch, for this source and these posts only.
+    expect(mockFindStored).toHaveBeenCalledTimes(1);
+    expect(mockFindStored).toHaveBeenCalledWith(ARTICLE_SOURCE, ['1', '2']);
   });
 
   // ─────────────────────────────────────────────
@@ -124,7 +109,8 @@ describe('articleIngestService.runIngestion', () => {
 
       expect(mockDownloadAudio).toHaveBeenCalledWith(audioUrl(1));
       expect(mockCreate).toHaveBeenCalledTimes(1);
-      expect(mockCreate.mock.calls[0][0].data).toEqual({
+      const [article, audio] = mockCreate.mock.calls[0];
+      expect(article).toEqual({
         source: ARTICLE_SOURCE,
         externalId: '1',
         lang: ARTICLE_LANG,
@@ -136,11 +122,12 @@ describe('articleIngestService.runIngestion', () => {
         audioSourceUrl: audioUrl(1),
         audioDurationSec: 65,
         publishedAt: new Date('2026-10-04T12:00:00.000Z'),
-        // Nested create = same transaction as the article.
-        audio: { create: { data: MP3.data, mimeType: 'audio/mpeg', size: 4 } },
       });
+      // The audio is handed over WITH the article, in the same call: that is what
+      // lets the repository write both in one transaction.
+      expect(audio).toEqual(MP3);
       // The audio must not ALSO be written through the separate path.
-      expect(mockAudioCreate).not.toHaveBeenCalled();
+      expect(mockAddAudio).not.toHaveBeenCalled();
       expect(report).toEqual({ created: 1, audioAdded: 0, skipped: 0, failed: 0, purged: 0 });
     });
 
@@ -151,10 +138,10 @@ describe('articleIngestService.runIngestion', () => {
       const report = await runIngestion(NOW);
 
       expect(mockCreate).toHaveBeenCalledTimes(1);
-      const data = mockCreate.mock.calls[0][0].data;
-      expect(data).not.toHaveProperty('audio');
+      const [article, audio] = mockCreate.mock.calls[0];
+      expect(audio).toBeNull();
       // The URL is kept: it is what lets a later run retry the download.
-      expect(data.audioSourceUrl).toBe(audioUrl(1));
+      expect(article.audioSourceUrl).toBe(audioUrl(1));
       expect(report.created).toBe(1);
       expect(report.failed).toBe(0);
     });
@@ -165,9 +152,9 @@ describe('articleIngestService.runIngestion', () => {
       await runIngestion(NOW);
 
       expect(mockDownloadAudio).not.toHaveBeenCalled();
-      const data = mockCreate.mock.calls[0][0].data;
-      expect(data).not.toHaveProperty('audio');
-      expect(data.audioSourceUrl).toBeNull();
+      const [article, audio] = mockCreate.mock.calls[0];
+      expect(audio).toBeNull();
+      expect(article.audioSourceUrl).toBeNull();
     });
   });
 
@@ -175,26 +162,25 @@ describe('articleIngestService.runIngestion', () => {
   describe('an article already stored', () => {
     it('is skipped with no download and no write when it has its audio', async () => {
       mockFetchLatestPosts.mockResolvedValue([makePost(1)]);
-      mockFindMany.mockResolvedValue([{ id: 'a-1', externalId: '1', audio: { articleId: 'a-1' } }]);
+      mockFindStored.mockResolvedValue([{ id: 'a-1', externalId: '1', hasAudio: true }]);
 
       const report = await runIngestion(NOW);
 
       expect(mockDownloadAudio).not.toHaveBeenCalled();
       expect(mockCreate).not.toHaveBeenCalled();
-      expect(mockAudioCreate).not.toHaveBeenCalled();
+      expect(mockAddAudio).not.toHaveBeenCalled();
       expect(report).toEqual({ created: 0, audioAdded: 0, skipped: 1, failed: 0, purged: 0 });
     });
 
     it('gets its audio on a later run when it was stored without it', async () => {
       mockFetchLatestPosts.mockResolvedValue([makePost(1)]);
-      mockFindMany.mockResolvedValue([{ id: 'a-1', externalId: '1', audio: null }]);
+      mockFindStored.mockResolvedValue([{ id: 'a-1', externalId: '1', hasAudio: false }]);
 
       const report = await runIngestion(NOW);
 
       expect(mockDownloadAudio).toHaveBeenCalledWith(audioUrl(1));
-      expect(mockAudioCreate).toHaveBeenCalledWith({
-        data: { articleId: 'a-1', data: MP3.data, mimeType: 'audio/mpeg', size: 4 },
-      });
+      // For the article that was already stored, with the bytes just downloaded.
+      expect(mockAddAudio).toHaveBeenCalledWith('a-1', MP3);
       // The article itself is not created a second time.
       expect(mockCreate).not.toHaveBeenCalled();
       expect(report).toEqual({ created: 0, audioAdded: 1, skipped: 0, failed: 0, purged: 0 });
@@ -202,12 +188,12 @@ describe('articleIngestService.runIngestion', () => {
 
     it('stays without audio, counted as skipped, when the retry fails again', async () => {
       mockFetchLatestPosts.mockResolvedValue([makePost(1)]);
-      mockFindMany.mockResolvedValue([{ id: 'a-1', externalId: '1', audio: null }]);
+      mockFindStored.mockResolvedValue([{ id: 'a-1', externalId: '1', hasAudio: false }]);
       mockDownloadAudio.mockRejectedValue(new Error('timeout'));
 
       const report = await runIngestion(NOW);
 
-      expect(mockAudioCreate).not.toHaveBeenCalled();
+      expect(mockAddAudio).not.toHaveBeenCalled();
       expect(report).toEqual({ created: 0, audioAdded: 0, skipped: 1, failed: 0, purged: 0 });
     });
   });
@@ -220,14 +206,14 @@ describe('articleIngestService.runIngestion', () => {
       const report = await runIngestion(NOW);
 
       expect(mockCreate).toHaveBeenCalledTimes(1);
-      expect(mockCreate.mock.calls[0][0].data.externalId).toBe('2');
+      expect(mockCreate.mock.calls[0][0].externalId).toBe('2');
       expect(report.failed).toBe(2);
       expect(report.created).toBe(1);
     });
 
     it('keeps going when storing one article fails', async () => {
       mockFetchLatestPosts.mockResolvedValue([makePost(1), makePost(2)]);
-      mockCreate.mockRejectedValueOnce(new Error('connection lost')).mockResolvedValueOnce({});
+      mockCreate.mockRejectedValueOnce(new Error('connection lost')).mockResolvedValueOnce(undefined);
 
       const report = await runIngestion(NOW);
 
@@ -254,9 +240,8 @@ describe('articleIngestService.runIngestion', () => {
         order.push(`download ${url.slice(-11)}`);
         return MP3;
       });
-      mockCreate.mockImplementation(async ({ data }: { data: { externalId: string } }) => {
-        order.push(`create ${data.externalId}`);
-        return {};
+      mockCreate.mockImplementation(async (article: { externalId: string }) => {
+        order.push(`create ${article.externalId}`);
       });
 
       await runIngestion(NOW);
@@ -269,7 +254,7 @@ describe('articleIngestService.runIngestion', () => {
 
       await expect(runIngestion(NOW)).rejects.toThrow('503');
       // A source that is down must not slowly empty the app.
-      expect(mockDeleteMany).not.toHaveBeenCalled();
+      expect(mockPurge).not.toHaveBeenCalled();
       expect(mockCreate).not.toHaveBeenCalled();
     });
   });
@@ -278,14 +263,12 @@ describe('articleIngestService.runIngestion', () => {
   describe('retention', () => {
     it(`deletes the articles published more than ${RETENTION_DAYS} days ago`, async () => {
       mockFetchLatestPosts.mockResolvedValue([]);
-      mockDeleteMany.mockResolvedValue({ count: 3 });
+      mockPurge.mockResolvedValue(3);
 
       const report = await runIngestion(NOW);
 
       // 30 days before 2026-10-05T12:00Z.
-      expect(mockDeleteMany).toHaveBeenCalledWith({
-        where: { publishedAt: { lt: new Date('2026-09-05T12:00:00.000Z') } },
-      });
+      expect(mockPurge).toHaveBeenCalledWith(new Date('2026-09-05T12:00:00.000Z'));
       expect(report.purged).toBe(3);
     });
 
