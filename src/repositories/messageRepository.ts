@@ -6,7 +6,7 @@
 // real-time broadcast fails.
 
 import { prisma } from '../lib/prisma';
-import { PublicUser } from './userRepository';
+import { PUBLIC_USER_SELECT, PublicUser } from './userRepository';
 
 export interface MessageWithSender {
   id: string;
@@ -18,12 +18,20 @@ export interface MessageWithSender {
   sender: PublicUser;
 }
 
-// On inclut les infos de l'expéditeur pour ne pas avoir à faire
-// une deuxième requête côté client pour afficher son nom/avatar
-const SENDER_INCLUDE = {
-  sender: {
-    select: { id: true, username: true, avatarUrl: true },
-  },
+// Exactly the fields of MessageWithSender. `select` and not `include`: `include`
+// returns every column of Message, so a column added later would be sent to the
+// client (REST response and `new_message` event) without anyone deciding it.
+//
+// The sender comes with the message so the client does not need a second request to
+// show a name and an avatar.
+const MESSAGE_SELECT = {
+  id: true,
+  conversationId: true,
+  senderId: true,
+  content: true,
+  createdAt: true,
+  readAt: true,
+  sender: { select: PUBLIC_USER_SELECT },
 } as const;
 
 /**
@@ -41,7 +49,7 @@ export const createMessage = async (
       content,
       // readAt reste NULL : le message est non lu jusqu'à ce que le destinataire ouvre la conv
     },
-    include: SENDER_INCLUDE,
+    select: MESSAGE_SELECT,
   });
 };
 
@@ -61,7 +69,7 @@ export const findMessages = async (
     orderBy: { createdAt: 'desc' }, // Plus récents d'abord
     skip: offset,
     take: limit,
-    include: SENDER_INCLUDE,
+    select: MESSAGE_SELECT,
   });
 };
 

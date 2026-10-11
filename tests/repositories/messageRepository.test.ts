@@ -38,15 +38,25 @@ const message = {
   sender: { id: 'user-1', username: 'Alice', avatarUrl: null },
 };
 
-// The only sender fields that may be loaded with a message.
-const SENDER_INCLUDE = { sender: { select: { id: true, username: true, avatarUrl: true } } };
+// Everything a message query may return, with only the public fields of the sender.
+// Adding a field here is a decision to expose it to the client: this list is also what
+// goes out in the `new_message` event.
+const MESSAGE_FIELDS = {
+  id: true,
+  conversationId: true,
+  senderId: true,
+  content: true,
+  createdAt: true,
+  readAt: true,
+  sender: { select: { id: true, username: true, avatarUrl: true } },
+};
 
 describe('messageRepository', () => {
   beforeEach(() => jest.resetAllMocks());
 
   // ─────────────────────────────────────────────
   describe('createMessage', () => {
-    it('stores the message unread, with only the public fields of its sender', async () => {
+    it('stores the message unread and returns an explicit list of fields', async () => {
       mockCreate.mockResolvedValue(message);
 
       const created = await createMessage('conv-1', 'user-1', 'Bonjour !');
@@ -54,7 +64,8 @@ describe('messageRepository', () => {
       expect(mockCreate).toHaveBeenCalledWith({
         // No readAt: a new message is unread until the recipient opens the conversation.
         data: { conversationId: 'conv-1', senderId: 'user-1', content: 'Bonjour !' },
-        include: SENDER_INCLUDE,
+        // `select`, never `include`: `include` would return every column of Message.
+        select: MESSAGE_FIELDS,
       });
       expect(created).toEqual(message);
     });
@@ -72,7 +83,8 @@ describe('messageRepository', () => {
         orderBy: { createdAt: 'desc' },
         skip: 30,
         take: 15,
-        include: SENDER_INCLUDE,
+        // `select`, never `include`: `include` would return every column of Message.
+        select: MESSAGE_FIELDS,
       });
       expect(page).toEqual([message]);
     });

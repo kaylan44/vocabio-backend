@@ -42,6 +42,16 @@ const conversation = { id: 'conv-1', createdAt: new Date('2026-10-01T10:00:00.00
 // The only user fields that may be loaded with a participant.
 const PUBLIC_USER_FIELDS = { id: true, username: true, avatarUrl: true };
 
+// Everything a conversation query may return: adding a field here is a decision to
+// expose it to the client.
+const CONVERSATION_FIELDS = {
+  id: true,
+  createdAt: true,
+  participants: {
+    select: { conversationId: true, userId: true, user: { select: PUBLIC_USER_FIELDS } },
+  },
+};
+
 describe('conversationRepository', () => {
   beforeEach(() => jest.resetAllMocks());
 
@@ -63,14 +73,15 @@ describe('conversationRepository', () => {
       expect(found).toEqual(conversation);
     });
 
-    it('loads only the public fields of each participant', async () => {
+    it('selects an explicit list of fields, with only the public fields of each participant', async () => {
       mockFindFirst.mockResolvedValue(null);
 
       await findConversationBetween('user-1', 'user-2');
 
-      expect(mockFindFirst.mock.calls[0][0].include.participants.include.user.select).toEqual(
-        PUBLIC_USER_FIELDS
-      );
+      const query = mockFindFirst.mock.calls[0][0];
+      // `include` would return every column of the tables, present and future.
+      expect(query).not.toHaveProperty('include');
+      expect(query.select).toEqual(CONVERSATION_FIELDS);
     });
   });
 
@@ -85,6 +96,8 @@ describe('conversationRepository', () => {
       expect(mockCreate.mock.calls[0][0].data).toEqual({
         participants: { create: [{ userId: 'user-1' }, { userId: 'user-2' }] },
       });
+      // Same explicit fields as a conversation that already existed.
+      expect(mockCreate.mock.calls[0][0].select).toEqual(CONVERSATION_FIELDS);
       expect(created).toEqual(conversation);
     });
   });
@@ -106,9 +119,27 @@ describe('conversationRepository', () => {
 
       await findConversationsOf('user-1');
 
-      const { messages } = mockFindMany.mock.calls[0][0].include;
+      const { messages } = mockFindMany.mock.calls[0][0].select;
       expect(messages.orderBy).toEqual({ createdAt: 'desc' });
       expect(messages.take).toBe(1);
+    });
+
+    it('selects an explicit list of fields for the conversation and for its last message', async () => {
+      mockFindMany.mockResolvedValue([]);
+
+      await findConversationsOf('user-1');
+
+      const query = mockFindMany.mock.calls[0][0];
+      expect(query).not.toHaveProperty('include');
+      const { messages, ...conversationFields } = query.select;
+      expect(conversationFields).toEqual(CONVERSATION_FIELDS);
+      expect(messages.select).toEqual({
+        id: true,
+        content: true,
+        createdAt: true,
+        senderId: true,
+        readAt: true,
+      });
     });
 
     it('exposes that message as lastMessage, and null when there is none', async () => {

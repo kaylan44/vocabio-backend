@@ -22,8 +22,9 @@ export interface PublicUser {
   avatarUrl: string | null;
 }
 
-// Single definition of the fields selected for a PublicUser.
-const PUBLIC_USER_SELECT = { id: true, username: true, avatarUrl: true } as const;
+// Single definition of the fields selected for a PublicUser. Exported so that the
+// other repositories load a user (a sender, a participant) with exactly these fields.
+export const PUBLIC_USER_SELECT = { id: true, username: true, avatarUrl: true } as const;
 
 /**
  * Creates the user if no row has this id, and does nothing otherwise.

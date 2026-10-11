@@ -6,13 +6,18 @@
 // the answer into a 403.
 
 import { prisma } from '../lib/prisma';
-import { PublicUser } from './userRepository';
+import { PUBLIC_USER_SELECT, PublicUser } from './userRepository';
 
 // ─────────────────────────────────────────────
 // Shapes returned to the services
 // ─────────────────────────────────────────────
 // Written by hand instead of inferred from Prisma, so that a service (and the REST
 // response built from it) does not change shape because a query changed.
+//
+// An interface alone would not be enough: TypeScript accepts an object that has MORE
+// fields than its type says. This is why every query below uses `select` and never
+// `include`: `include` returns all the columns of the table, so a column added later
+// would reach the client while these interfaces still claimed otherwise.
 
 export interface ConversationParticipant {
   conversationId: string;
@@ -40,11 +45,17 @@ export interface ConversationWithLastMessage extends ConversationWithParticipant
 }
 
 // Single definition of "a conversation with its participants", shared by the three
-// queries below so they can never return different fields.
-// On inclut les participants pour pouvoir les retourner au client
-const PARTICIPANTS_INCLUDE = {
+// queries below so they can never return different fields. It lists exactly the
+// fields of ConversationWithParticipants.
+const CONVERSATION_SELECT = {
+  id: true,
+  createdAt: true,
   participants: {
-    include: { user: { select: { id: true, username: true, avatarUrl: true } } },
+    select: {
+      conversationId: true,
+      userId: true,
+      user: { select: PUBLIC_USER_SELECT },
+    },
   },
 } as const;
 
@@ -69,7 +80,7 @@ export const findConversationBetween = async (
         { participants: { some: { userId: recipientId } } },
       ],
     },
-    include: PARTICIPANTS_INCLUDE,
+    select: CONVERSATION_SELECT,
   });
 };
 
@@ -94,7 +105,7 @@ export const createConversation = async (
         ],
       },
     },
-    include: PARTICIPANTS_INCLUDE,
+    select: CONVERSATION_SELECT,
   });
 };
 
@@ -110,8 +121,8 @@ export const findConversationsOf = async (userId: string): Promise<ConversationW
     where: {
       participants: { some: { userId } },
     },
-    include: {
-      ...PARTICIPANTS_INCLUDE,
+    select: {
+      ...CONVERSATION_SELECT,
       // On prend uniquement le dernier message (orderBy + take: 1)
       messages: {
         orderBy: { createdAt: 'desc' },
