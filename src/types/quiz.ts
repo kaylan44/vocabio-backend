@@ -1,4 +1,5 @@
-// Shared quiz vocabulary: the allowed values, and the shape of one answer.
+// Shared quiz vocabulary: the allowed values, the shape of one answer, and what the
+// three quiz endpoints answer.
 // See src/types/user.ts for why such shapes live in src/types/.
 //
 // Why this file also holds VALUES (the arrays), in a folder named "types": the union
@@ -47,4 +48,91 @@ export interface QuizAnswerInput {
   category: QuizCategory;
   level: QuizLevel;
   isCorrect: boolean;
+}
+
+// ─────────────────────────────────────────────
+// What the client receives
+// ─────────────────────────────────────────────
+// The return types of quizService, i.e. the JSON of the three quiz endpoints (see
+// README.md, "Quiz results"). They are written by hand and given to the service
+// functions as EXPLICIT return types, for two reasons:
+//   - the contract with the app is readable in one place, instead of being whatever
+//     the last `return` of each function happens to build;
+//   - changing a response by accident (renaming a field, dropping one) becomes a
+//     compile error in the service, not a surprise in the app.
+// What an explicit return type does NOT do: it does not stop an object from carrying
+// MORE fields than declared when it is built by spreading another object. What keeps
+// these responses exact is that every field is listed somewhere: in the service, or
+// in the `select` of the repository for the session.
+//
+// `mode`, `category` and `level` are `string` here, not QuizMode / QuizCategory /
+// QuizLevel: these values are read back from String columns (see the note above
+// QuizAnswerInput).
+
+// A stored session, as answered by POST /quiz-sessions. No `userId`: the client
+// already knows who it is, and the id of another user must never leave the server.
+export interface QuizSessionSummary {
+  id: string;
+  mode: string;
+  score: number; // number of correct answers
+  total: number; // number of questions
+  createdAt: Date;
+}
+
+export interface CreateQuizSessionResult {
+  session: QuizSessionSummary;
+  // false when the session was already stored (replay): the route answers 200
+  // instead of 201.
+  created: boolean;
+}
+
+// Counters shared by every breakdown of the statistics.
+export interface AccuracyTotals {
+  answers: number;
+  correct: number;
+  // Ratio rounded to 3 decimals. null when there is no answer: "no data" is not 0 %.
+  accuracy: number | null;
+}
+
+export interface ModeStats extends AccuracyTotals {
+  mode: string;
+  sessions: number;
+}
+
+export interface CategoryStats extends AccuracyTotals {
+  category: string;
+}
+
+export interface LevelStats extends AccuracyTotals {
+  level: string;
+}
+
+// A word and how many times the user answered it wrong. Only the id: the app owns
+// the vocabulary and resolves it to the actual word.
+export interface MissedWord {
+  wordId: string;
+  wrong: number;
+}
+
+// Answer of GET /quiz-sessions/stats.
+export interface QuizStats {
+  totalSessions: number;
+  totalAnswers: number;
+  totalCorrect: number;
+  accuracy: number | null;
+  lastSessionAt: Date | null; // null when the user has no session
+  byMode: ModeStats[];
+  byCategory: CategoryStats[];
+  byLevel: LevelStats[];
+  mostMissedWords: MissedWord[];
+}
+
+// One entry of GET /quiz-sessions/word-progress: one word in one translation direction.
+export interface WordProgress {
+  wordId: string;
+  mode: string;
+  correctStreak: number; // correct answers in a row, back to 0 on a wrong one
+  totalSeen: number;
+  totalCorrect: number;
+  lastSeenAt: Date;
 }

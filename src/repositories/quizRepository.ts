@@ -11,7 +11,7 @@
 // (`session: { userId }`), because QuizAnswer has no userId column.
 
 import { prisma } from '../lib/prisma';
-import { QuizAnswerInput, QuizMode } from '../types/quiz';
+import { MissedWord, QuizAnswerInput, QuizMode, QuizSessionSummary } from '../types/quiz';
 import { toRepositoryError } from './errors';
 
 // ─────────────────────────────────────────────
@@ -26,15 +26,11 @@ import { toRepositoryError } from './errors';
 // What is READ is typed `string`: `mode`, `category` and `level` are String columns,
 // which guarantee nothing about their content.
 
-// A session as stored. `userId` is included so the service can check the owner; the
+// A session as stored: what the client receives (QuizSessionSummary, src/types/quiz.ts)
+// plus its owner. `userId` is included so the service can check the owner; the
 // service removes it before answering the client.
-export interface StoredQuizSession {
-  id: string;
+export interface StoredQuizSession extends QuizSessionSummary {
   userId: string;
-  mode: string;
-  score: number;
-  total: number;
-  createdAt: Date;
 }
 
 export interface NewQuizSession {
@@ -63,10 +59,7 @@ export interface AnswerCount {
   count: number;
 }
 
-export interface MissedWord {
-  wordId: string;
-  wrong: number;
-}
+// MissedWord is declared in src/types/quiz.ts: it is returned to the client as it is.
 
 export interface ChronologicalAnswer {
   wordId: string;

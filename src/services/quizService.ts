@@ -14,11 +14,18 @@
 import { UniqueConstraintError } from '../repositories/errors';
 import * as quizRepository from '../repositories/quizRepository';
 import {
+  CategoryStats,
+  CreateQuizSessionResult,
+  LevelStats,
+  ModeStats,
   QUIZ_CATEGORIES,
   QUIZ_LEVELS,
   QUIZ_MODES,
   QuizAnswerInput,
   QuizMode,
+  QuizSessionSummary,
+  QuizStats,
+  WordProgress,
 } from '../types/quiz';
 
 // ─────────────────────────────────────────────
@@ -57,7 +64,10 @@ const httpError = (statusCode: number, message: string): Error => {
  * @returns null if the id is free, the session if it belongs to `userId`
  * @throws 409 if the id is already used by another user (generic message, no data)
  */
-const resolveExisting = async (sessionId: string, userId: string) => {
+const resolveExisting = async (
+  sessionId: string,
+  userId: string
+): Promise<QuizSessionSummary | null> => {
   // `userId` comes back with the session, but only to check the owner: it is removed
   // before returning.
   const existing = await quizRepository.findSessionById(sessionId);
@@ -97,7 +107,7 @@ export const createQuizSession = async (
   sessionId: string,
   mode: QuizMode,
   answers: QuizAnswerInput[]
-) => {
+): Promise<CreateQuizSessionResult> => {
   // Step 1: replay? If this user already stored this session, return it as is.
   const existing = await resolveExisting(sessionId, userId);
   if (existing) {
@@ -234,7 +244,7 @@ const foldByKey = (
  *
  * @param userId - Authenticated user (from the JWT)
  */
-export const getQuizStats = async (userId: string) => {
+export const getQuizStats = async (userId: string): Promise<QuizStats> => {
   const [sessionsByMode, answersByCategory, answersByLevel, missedWords] = await Promise.all([
     quizRepository.sumSessionsByMode(userId),
     quizRepository.countAnswersByCategory(userId),
@@ -242,7 +252,7 @@ export const getQuizStats = async (userId: string) => {
     quizRepository.findMostMissedWords(userId, MOST_MISSED_LIMIT),
   ]);
 
-  const byMode = sessionsByMode
+  const byMode: ModeStats[] = sessionsByMode
     .map((row) => ({
       mode: row.mode,
       sessions: row.sessions,
@@ -269,15 +279,13 @@ export const getQuizStats = async (userId: string) => {
     return latest;
   }, null);
 
-  const byCategory = foldByKey(answersByCategory, QUIZ_CATEGORIES).map(({ key, ...rest }) => ({
-    category: key,
-    ...rest,
-  }));
+  const byCategory: CategoryStats[] = foldByKey(answersByCategory, QUIZ_CATEGORIES).map(
+    ({ key, ...rest }) => ({ category: key, ...rest })
+  );
 
-  const byLevel = foldByKey(answersByLevel, QUIZ_LEVELS).map(({ key, ...rest }) => ({
-    level: key,
-    ...rest,
-  }));
+  const byLevel: LevelStats[] = foldByKey(answersByLevel, QUIZ_LEVELS).map(
+    ({ key, ...rest }) => ({ level: key, ...rest })
+  );
 
   return {
     totalSessions,
@@ -319,22 +327,12 @@ export const getQuizStats = async (userId: string) => {
  *
  * @param userId - Authenticated user (from the JWT)
  */
-export const getWordProgress = async (userId: string) => {
+export const getWordProgress = async (userId: string): Promise<WordProgress[]> => {
   // Oldest first: the order is guaranteed by the repository, and the streak below is
   // only right because of it.
   const answers = await quizRepository.findAnswersOldestFirst(userId);
 
-  const progress = new Map<
-    string,
-    {
-      wordId: string;
-      mode: string;
-      correctStreak: number;
-      totalSeen: number;
-      totalCorrect: number;
-      lastSeenAt: Date;
-    }
-  >();
+  const progress = new Map<string, WordProgress>();
 
   for (const answer of answers) {
     const { mode, createdAt } = answer;
