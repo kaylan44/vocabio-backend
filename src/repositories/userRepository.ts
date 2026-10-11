@@ -13,11 +13,7 @@
 
 import { prisma } from '../lib/prisma';
 import { PublicUser } from '../types/user';
-
-// Single definition of the fields selected for a PublicUser (src/types/user.ts): the
-// two must list the same fields. Exported so that the other repositories load a user
-// (a sender, a participant) with exactly these fields.
-export const PUBLIC_USER_SELECT = { id: true, username: true, avatarUrl: true } as const;
+import { PUBLIC_USER_SELECT } from './selects';
 
 /**
  * Creates the user if no row has this id, and does nothing otherwise.

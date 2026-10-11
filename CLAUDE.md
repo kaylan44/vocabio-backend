@@ -27,6 +27,9 @@ Functional details: `README.md`. Historical implementation plan: `PLAN.md`.
     ONE repository function (nested create). Queries list their fields with
     `select`, never `include`: `include` returns every column of the table, so
     a column added later would reach the client without anyone deciding it.
+    A field list needed by several repositories (`PUBLIC_USER_SELECT`) lives
+    in `src/repositories/selects.ts`: a repository does not import another
+    repository to get it.
   - `src/types/*`: shapes shared between layers or sent to the client
     (`PublicUser`, `MessageWithSender`, the quiz and article vocabulary). It
     imports from no other layer. A shape that only describes the result of ONE

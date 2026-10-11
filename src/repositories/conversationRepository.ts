@@ -7,7 +7,7 @@
 
 import { prisma } from '../lib/prisma';
 import { ConversationWithLastMessage, ConversationWithParticipants } from '../types/conversation';
-import { PUBLIC_USER_SELECT } from './userRepository';
+import { PUBLIC_USER_SELECT } from './selects';
 
 // ─────────────────────────────────────────────
 // Shapes returned to the services

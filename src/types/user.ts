@@ -13,7 +13,7 @@
 
 // Declared by hand rather than inferred from Prisma: a column added to the User
 // table later stays private until someone lists it here AND in PUBLIC_USER_SELECT
-// (userRepository.ts), the `select` that must match this interface.
+// (src/repositories/selects.ts), the `select` that must match this interface.
 export interface PublicUser {
   id: string;
   username: string;

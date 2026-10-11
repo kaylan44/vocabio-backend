@@ -7,7 +7,7 @@
 
 import { prisma } from '../lib/prisma';
 import { MessageWithSender } from '../types/message';
-import { PUBLIC_USER_SELECT } from './userRepository';
+import { PUBLIC_USER_SELECT } from './selects';
 
 // Exactly the fields of MessageWithSender (src/types/message.ts). `select` and not `include`: `include`
 // returns every column of Message, so a column added later would be sent to the
