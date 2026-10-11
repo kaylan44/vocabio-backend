@@ -2,18 +2,20 @@
 //
 // Point de complexité : createMessage() appelle getIO() pour émettre sur Socket.io.
 // On mocke src/lib/socket pour contrôler ce comportement dans les tests.
+//
+// The repositories are mocked: these tests check what the service does around the
+// database (what it stores, who it notifies, what it returns). The shape of the
+// queries is checked in tests/repositories/messageRepository.test.ts and
+// conversationRepository.test.ts.
 
-jest.mock('../../src/lib/prisma', () => ({
-  prisma: {
-    message: {
-      create: jest.fn(),
-      findMany: jest.fn(),
-      updateMany: jest.fn(),
-    },
-    participant: {
-      findMany: jest.fn(),
-    },
-  },
+jest.mock('../../src/repositories/messageRepository', () => ({
+  createMessage: jest.fn(),
+  findMessages: jest.fn(),
+  markMessagesAsRead: jest.fn(),
+}));
+
+jest.mock('../../src/repositories/conversationRepository', () => ({
+  findParticipantUserIds: jest.fn(),
 }));
 
 // Mock du singleton Socket.io
@@ -28,12 +30,13 @@ jest.mock('../../src/lib/socket', () => ({
 }));
 
 import { createMessage, getMessages, markConversationAsRead } from '../../src/services/messageService';
-import { prisma } from '../../src/lib/prisma';
+import * as messageRepository from '../../src/repositories/messageRepository';
+import { findParticipantUserIds } from '../../src/repositories/conversationRepository';
 
-const mockCreate = prisma.message.create as jest.Mock;
-const mockFindMany = prisma.message.findMany as jest.Mock;
-const mockUpdateMany = prisma.message.updateMany as jest.Mock;
-const mockParticipants = prisma.participant.findMany as jest.Mock;
+const mockCreate = messageRepository.createMessage as jest.Mock;
+const mockFindMessages = messageRepository.findMessages as jest.Mock;
+const mockMarkAsRead = messageRepository.markMessagesAsRead as jest.Mock;
+const mockParticipants = findParticipantUserIds as jest.Mock;
 
 const expectedRooms = ['conv-1', 'user:user-1', 'user:user-2'];
 
@@ -50,7 +53,7 @@ const fakeMessage = {
 describe('messageService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockParticipants.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+    mockParticipants.mockResolvedValue(['user-1', 'user-2']);
   });
 
   // ─────────────────────────────────────────────
@@ -60,11 +63,7 @@ describe('messageService', () => {
 
       await createMessage('conv-1', 'user-1', 'Bonjour !');
 
-      expect(mockCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: { conversationId: 'conv-1', senderId: 'user-1', content: 'Bonjour !' },
-        })
-      );
+      expect(mockCreate).toHaveBeenCalledWith('conv-1', 'user-1', 'Bonjour !');
     });
 
     it('émet new_message sur la room de la conversation et les rooms des participants', async () => {
@@ -72,9 +71,8 @@ describe('messageService', () => {
 
       await createMessage('conv-1', 'user-1', 'Bonjour !');
 
-      expect(mockParticipants).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { conversationId: 'conv-1' } })
-      );
+      // The rooms notified are the ones of THIS conversation's participants.
+      expect(mockParticipants).toHaveBeenCalledWith('conv-1');
       expect(mockTo).toHaveBeenCalledWith(expectedRooms);
       expect(mockEmit).toHaveBeenCalledWith('new_message', expect.objectContaining({
         id: 'msg-1',
@@ -104,52 +102,37 @@ describe('messageService', () => {
   // ─────────────────────────────────────────────
   describe('getMessages', () => {
     it('retourne les messages avec la pagination correcte', async () => {
-      mockFindMany.mockResolvedValue([fakeMessage]);
+      mockFindMessages.mockResolvedValue([fakeMessage]);
 
-      const result = await getMessages('conv-1', 0, 30);
+      const result = await getMessages('conv-1', 60, 15);
 
       expect(result).toEqual([fakeMessage]);
-      expect(mockFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { conversationId: 'conv-1' },
-          skip: 0,
-          take: 30,
-          orderBy: { createdAt: 'desc' },
-        })
-      );
+      expect(mockFindMessages).toHaveBeenCalledWith('conv-1', 60, 15);
     });
 
     it('utilise offset=0 et limit=30 par défaut', async () => {
-      mockFindMany.mockResolvedValue([]);
+      mockFindMessages.mockResolvedValue([]);
       await getMessages('conv-1');
 
-      expect(mockFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({ skip: 0, take: 30 })
-      );
+      expect(mockFindMessages).toHaveBeenCalledWith('conv-1', 0, 30);
     });
   });
 
   // ─────────────────────────────────────────────
   describe('markConversationAsRead', () => {
     it('met à jour les messages non lus envoyés par l\'autre participant', async () => {
-      mockUpdateMany.mockResolvedValue({ count: 3 });
+      mockMarkAsRead.mockResolvedValue(3);
 
       const count = await markConversationAsRead('conv-1', 'user-1');
 
       expect(count).toBe(3);
-      expect(mockUpdateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            conversationId: 'conv-1',
-            senderId: { not: 'user-1' }, // Seulement les messages reçus
-            readAt: null,
-          }),
-        })
-      );
+      // For this conversation and this reader; "received and unread only" is the
+      // repository's filter, checked in messageRepository.test.ts.
+      expect(mockMarkAsRead).toHaveBeenCalledWith('conv-1', 'user-1', expect.any(Date));
     });
 
     it('émet message_read via Socket.io si des messages ont été marqués', async () => {
-      mockUpdateMany.mockResolvedValue({ count: 2 });
+      mockMarkAsRead.mockResolvedValue(2);
 
       await markConversationAsRead('conv-1', 'user-1');
 
@@ -160,8 +143,18 @@ describe('messageService', () => {
       }));
     });
 
+    it('announces in message_read the very date that was stored', async () => {
+      mockMarkAsRead.mockResolvedValue(2);
+
+      await markConversationAsRead('conv-1', 'user-1');
+
+      // Two different dates would make the sender's screen disagree with the database.
+      const storedReadAt = mockMarkAsRead.mock.calls[0][2];
+      expect(mockEmit.mock.calls[0][1].readAt).toBe(storedReadAt);
+    });
+
     it('n\'émet pas Socket.io si aucun message n\'était non lu', async () => {
-      mockUpdateMany.mockResolvedValue({ count: 0 });
+      mockMarkAsRead.mockResolvedValue(0);
 
       await markConversationAsRead('conv-1', 'user-1');
 

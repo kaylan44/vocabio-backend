@@ -11,9 +11,9 @@
 // That is why each article is its own try/catch, and why "already stored" is decided
 // by the database (unique constraint on source + externalId), not by memory.
 
-import { Prisma } from '@prisma/client';
-import { prisma } from '../lib/prisma';
 import { downloadAudio, fetchLatestPosts } from '../lib/holaQuePasa';
+import * as articleRepository from '../repositories/articleRepository';
+import { UniqueConstraintError } from '../repositories/errors';
 import { ParsedArticle, parsePost } from './articleParser';
 
 // ─────────────────────────────────────────────
@@ -66,9 +66,6 @@ const tryDownloadAudio = async (article: ParsedArticle) => {
   }
 };
 
-const isUniqueViolation = (error: unknown): boolean =>
-  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
-
 // ─────────────────────────────────────────────
 // runIngestion
 // ─────────────────────────────────────────────
@@ -112,15 +109,12 @@ export const runIngestion = async (now: Date = new Date()): Promise<IngestionRep
   }
 
   // ── 3 ────────────────────────────────────────
-  // One query for the whole batch instead of one per article. `audio` only selects
-  // the key: we need to know whether the row exists, not to load the MP3.
-  const stored = await prisma.article.findMany({
-    where: {
-      source: ARTICLE_SOURCE,
-      externalId: { in: articles.map((article) => article.externalId) },
-    },
-    select: { id: true, externalId: true, audio: { select: { articleId: true } } },
-  });
+  // One query for the whole batch instead of one per article, and no MP3 is loaded:
+  // we only learn whether each article has its audio.
+  const stored = await articleRepository.findStoredByExternalIds(
+    ARTICLE_SOURCE,
+    articles.map((article) => article.externalId)
+  );
   const storedByExternalId = new Map(stored.map((row) => [row.externalId, row]));
 
   // ── 4 ────────────────────────────────────────
@@ -139,46 +133,32 @@ export const runIngestion = async (now: Date = new Date()): Promise<IngestionRep
       if (!existing) {
         const audio = await tryDownloadAudio(article);
 
-        // Nested create: the article and its audio are written in ONE transaction.
-        // We can never end up with an audio row pointing to nothing.
-        await prisma.article.create({
-          data: {
+        // The article and its audio are written in ONE transaction (see
+        // createArticle): we can never end up with an audio row pointing to nothing.
+        await articleRepository.createArticle(
+          {
             source: ARTICLE_SOURCE,
             externalId: article.externalId,
             lang: ARTICLE_LANG,
             level: article.level,
             title: article.title,
             excerpt: article.excerpt,
-            // Prisma's Json input type does not accept our interface directly
-            // (it wants an index signature). The value IS plain JSON: arrays of
-            // objects of strings.
-            content: article.content as unknown as Prisma.InputJsonValue,
+            content: article.content,
             url: article.url,
             audioSourceUrl: article.audioSourceUrl,
             audioDurationSec: article.audioDurationSec,
             publishedAt: article.publishedAt,
-            ...(audio && {
-              audio: {
-                create: { data: audio.data, mimeType: audio.mimeType, size: audio.data.length },
-              },
-            }),
           },
-        });
+          audio
+        );
         report.created += 1;
         continue;
       }
 
-      if (!existing.audio && article.audioSourceUrl) {
+      if (!existing.hasAudio && article.audioSourceUrl) {
         const audio = await tryDownloadAudio(article);
         if (audio) {
-          await prisma.articleAudio.create({
-            data: {
-              articleId: existing.id,
-              data: audio.data,
-              mimeType: audio.mimeType,
-              size: audio.data.length,
-            },
-          });
+          await articleRepository.addArticleAudio(existing.id, audio);
           report.audioAdded += 1;
           continue;
         }
@@ -188,9 +168,9 @@ export const runIngestion = async (now: Date = new Date()): Promise<IngestionRep
       // limit, accepted to keep the job simple.
       report.skipped += 1;
     } catch (error) {
-      // P2002 = another run stored the same article (or its audio) between our read
-      // at step 3 and our write. The data is there, which is what we wanted.
-      if (isUniqueViolation(error)) {
+      // Unique constraint = another run stored the same article (or its audio) between
+      // our read at step 3 and our write. The data is there, which is what we wanted.
+      if (error instanceof UniqueConstraintError) {
         report.skipped += 1;
         continue;
       }
@@ -201,8 +181,7 @@ export const runIngestion = async (now: Date = new Date()): Promise<IngestionRep
   }
 
   // ── 5 ────────────────────────────────────────
-  const { count } = await prisma.article.deleteMany({ where: { publishedAt: { lt: cutoff } } });
-  report.purged = count;
+  report.purged = await articleRepository.deleteArticlesOlderThan(cutoff);
 
   return report;
 };

@@ -1,31 +1,34 @@
 // Unit tests of the article read service.
 //
-// Prisma is mocked: these tests check what the service asks for and what it hands
-// back (order, filter, private fields, 404s), NOT that the queries are valid SQL.
+// The repository is mocked: these tests check what the service asks for (page, level
+// filter), that it hands back what it was given, and the 404s.
+//
+// What is NOT checked here any more, because it now lives in the repository: the sort
+// order, which fields are selected (no text in the list, never the internal fields or
+// the audio bytes) and the `hasAudio` boolean. Those tests are in
+// tests/repositories/articleRepository.test.ts.
 
-jest.mock('../../src/lib/prisma', () => ({
-  prisma: {
-    article: {
-      findMany: jest.fn(),
-      findUnique: jest.fn(),
-    },
-    articleAudio: {
-      findUnique: jest.fn(),
-    },
-  },
+jest.mock('../../src/repositories/articleRepository', () => ({
+  findArticleSummaries: jest.fn(),
+  findArticleById: jest.fn(),
+  findArticleAudio: jest.fn(),
 }));
 
-import { prisma } from '../../src/lib/prisma';
+import {
+  findArticleAudio,
+  findArticleById,
+  findArticleSummaries,
+} from '../../src/repositories/articleRepository';
 import { getArticle, getArticleAudio, listArticles } from '../../src/services/articleService';
 
-const mockFindMany = prisma.article.findMany as jest.Mock;
-const mockFindUnique = prisma.article.findUnique as jest.Mock;
-const mockAudioFindUnique = prisma.articleAudio.findUnique as jest.Mock;
+const mockFindSummaries = findArticleSummaries as jest.Mock;
+const mockFindById = findArticleById as jest.Mock;
+const mockFindAudio = findArticleAudio as jest.Mock;
 
 const ARTICLE_ID = '3f2b1c7e-8a54-4d2f-9b1a-0c5d6e7f8a90';
 
-// A row as Prisma returns it with the service's select.
-const storedRow = (audio: { articleId: string } | null) => ({
+// An article summary as the repository returns it.
+const summary = (hasAudio: boolean) => ({
   id: ARTICLE_ID,
   source: 'holaquepasa',
   lang: 'es',
@@ -35,7 +38,7 @@ const storedRow = (audio: { articleId: string } | null) => ({
   url: 'https://holaquepasa.com/el-gato/',
   publishedAt: new Date('2026-10-04T12:00:00.000Z'),
   audioDurationSec: 65,
-  audio,
+  hasAudio,
 });
 
 describe('articleService', () => {
@@ -43,54 +46,35 @@ describe('articleService', () => {
 
   // ─────────────────────────────────────────────
   describe('listArticles', () => {
-    it('returns the newest articles first, with a stable order for pagination', async () => {
-      mockFindMany.mockResolvedValue([]);
+    it('asks for the requested page', async () => {
+      mockFindSummaries.mockResolvedValue([]);
 
       await listArticles(undefined, 20, 10);
 
-      const query = mockFindMany.mock.calls[0][0];
-      expect(query.orderBy).toEqual([{ publishedAt: 'desc' }, { id: 'desc' }]);
-      expect(query.skip).toBe(20);
-      expect(query.take).toBe(10);
+      // offset then limit: swapped, the app would skip 10 articles and receive 20.
+      expect(mockFindSummaries).toHaveBeenCalledWith(undefined, 20, 10);
     });
 
     it('filters by level only when one is given', async () => {
-      mockFindMany.mockResolvedValue([]);
+      mockFindSummaries.mockResolvedValue([]);
 
       await listArticles(undefined, 0, 20);
       await listArticles('intermediate', 0, 20);
 
-      expect(mockFindMany.mock.calls[0][0].where).toEqual({});
-      expect(mockFindMany.mock.calls[1][0].where).toEqual({ level: 'intermediate' });
+      expect(mockFindSummaries.mock.calls[0][0]).toBeUndefined();
+      expect(mockFindSummaries.mock.calls[1][0]).toBe('intermediate');
     });
 
-    it('never selects the text, the audio bytes or the internal fields', async () => {
-      mockFindMany.mockResolvedValue([]);
-
-      await listArticles(undefined, 0, 20);
-
-      const { select } = mockFindMany.mock.calls[0][0];
-      // The list must stay light: no text.
-      expect(select).not.toHaveProperty('content');
-      // Internal to the ingestion, never sent to a client.
-      expect(select).not.toHaveProperty('externalId');
-      expect(select).not.toHaveProperty('audioSourceUrl');
-      // Only the key of the audio row: selecting `data` would load every MP3.
-      expect(select.audio).toEqual({ select: { articleId: true } });
-    });
-
-    it('replaces the audio relation by a hasAudio boolean', async () => {
-      const withAudio = storedRow({ articleId: ARTICLE_ID });
-      const withoutAudio = { ...storedRow(null), id: 'other' };
-      mockFindMany.mockResolvedValue([withAudio, withoutAudio]);
+    it('returns the summaries as the repository gives them, in the same order', async () => {
+      const withAudio = summary(true);
+      const withoutAudio = { ...summary(false), id: 'other' };
+      mockFindSummaries.mockResolvedValue([withAudio, withoutAudio]);
 
       const articles = await listArticles(undefined, 0, 20);
 
-      expect(articles).toHaveLength(2);
-      expect(articles[0]).toMatchObject({ id: ARTICLE_ID, title: 'El gato', hasAudio: true });
-      expect(articles[1]).toMatchObject({ id: 'other', hasAudio: false });
-      expect(articles[0]).not.toHaveProperty('audio');
-      expect(articles[1]).not.toHaveProperty('audio');
+      // Nothing is added on the way: a field added here would bypass the list of
+      // fields allowed to leave the server, which the repository owns.
+      expect(articles).toEqual([withAudio, withoutAudio]);
     });
   });
 
@@ -98,29 +82,17 @@ describe('articleService', () => {
   describe('getArticle', () => {
     it('returns the article with its text and hasAudio', async () => {
       const content = [{ type: 'paragraph', segments: [{ text: 'El gato vive en una casa.' }] }];
-      mockFindUnique.mockResolvedValue({ ...storedRow({ articleId: ARTICLE_ID }), content });
+      const stored = { ...summary(true), content };
+      mockFindById.mockResolvedValue(stored);
 
       const article = await getArticle(ARTICLE_ID);
 
-      expect(mockFindUnique.mock.calls[0][0].where).toEqual({ id: ARTICLE_ID });
-      expect(mockFindUnique.mock.calls[0][0].select.content).toBe(true);
-      expect(article).toMatchObject({ id: ARTICLE_ID, content, hasAudio: true });
-      expect(article).not.toHaveProperty('audio');
-    });
-
-    it('never selects the internal fields or the audio bytes', async () => {
-      mockFindUnique.mockResolvedValue(storedRow(null));
-
-      await getArticle(ARTICLE_ID);
-
-      const { select } = mockFindUnique.mock.calls[0][0];
-      expect(select).not.toHaveProperty('externalId');
-      expect(select).not.toHaveProperty('audioSourceUrl');
-      expect(select.audio).toEqual({ select: { articleId: true } });
+      expect(mockFindById).toHaveBeenCalledWith(ARTICLE_ID);
+      expect(article).toEqual(stored);
     });
 
     it('throws a 404 when the article does not exist', async () => {
-      mockFindUnique.mockResolvedValue(null);
+      mockFindById.mockResolvedValue(null);
 
       await expect(getArticle(ARTICLE_ID)).rejects.toMatchObject({
         statusCode: 404,
@@ -133,14 +105,14 @@ describe('articleService', () => {
   describe('getArticleAudio', () => {
     it('returns the bytes, the type and the size of the audio', async () => {
       const audio = { data: Buffer.from([1, 2, 3]), mimeType: 'audio/mpeg', size: 3 };
-      mockAudioFindUnique.mockResolvedValue(audio);
+      mockFindAudio.mockResolvedValue(audio);
 
       await expect(getArticleAudio(ARTICLE_ID)).resolves.toEqual(audio);
-      expect(mockAudioFindUnique.mock.calls[0][0].where).toEqual({ articleId: ARTICLE_ID });
+      expect(mockFindAudio).toHaveBeenCalledWith(ARTICLE_ID);
     });
 
     it('throws a 404 when there is no audio for this id', async () => {
-      mockAudioFindUnique.mockResolvedValue(null);
+      mockFindAudio.mockResolvedValue(null);
 
       await expect(getArticleAudio(ARTICLE_ID)).rejects.toMatchObject({
         statusCode: 404,

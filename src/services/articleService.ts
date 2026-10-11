@@ -8,8 +8,8 @@
 // check. The protection is the authentication on the routes, plus the rule below on
 // which fields leave the server.
 
-import { prisma } from '../lib/prisma';
-import { ArticleLevel } from './articleParser';
+import * as articleRepository from '../repositories/articleRepository';
+import { ArticleAudioFile, ArticleDetail, ArticleLevel, ArticleSummary } from '../types/article';
 
 // Same error convention as assertParticipant (conversationService.ts): a plain Error
 // carrying a `statusCode`, which handleError() turns into the HTTP status.
@@ -19,34 +19,8 @@ const httpError = (statusCode: number, message: string): Error => {
   return err;
 };
 
-// ─────────────────────────────────────────────
-// What is returned to the client
-// ─────────────────────────────────────────────
-// An explicit `select`, not "everything minus a few fields": a column added to the
-// table later stays private until someone decides to list it here.
-// Deliberately absent: externalId and audioSourceUrl (internal to the ingestion).
-//
-// `audio` only selects its key. We need to know whether the row exists (hasAudio),
-// never the MP3 itself, which is megabytes.
-const SUMMARY_SELECT = {
-  id: true,
-  source: true,
-  lang: true,
-  level: true,
-  title: true,
-  excerpt: true,
-  url: true,
-  publishedAt: true,
-  audioDurationSec: true,
-  audio: { select: { articleId: true } },
-} as const;
-
-// Replaces the `audio` relation by a boolean: the client only needs to know whether
-// it can call the audio route.
-const withHasAudio = <Row extends { audio: { articleId: string } | null }>(row: Row) => {
-  const { audio, ...article } = row;
-  return { ...article, hasAudio: audio !== null };
-};
+// Which fields are returned to the client is decided in articleRepository.ts
+// (SUMMARY_SELECT): the internal fields and the audio bytes never reach this file.
 
 // ─────────────────────────────────────────────
 // listArticles
@@ -63,56 +37,40 @@ export const listArticles = async (
   level: ArticleLevel | undefined,
   offset: number,
   limit: number
-) => {
-  const rows = await prisma.article.findMany({
-    where: level ? { level } : {},
-    // `id` as a tie-breaker: two articles with the same publishedAt must always come
-    // in the same order, otherwise offset pagination can repeat or skip one.
-    orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
-    skip: offset,
-    take: limit,
-    select: SUMMARY_SELECT,
-  });
-
-  return rows.map(withHasAudio);
+): Promise<ArticleSummary[]> => {
+  return articleRepository.findArticleSummaries(level, offset, limit);
 };
 
 // ─────────────────────────────────────────────
 // getArticle
 // ─────────────────────────────────────────────
 /**
- * Returns one article with its text (`content`: ArticleBlock[], see articleParser.ts).
+ * Returns one article with its text (`content`: ArticleBlock[], see src/types/article.ts).
  *
  * @throws 404 if no article has this id (unknown, or purged since the list was loaded)
  */
-export const getArticle = async (articleId: string) => {
-  const row = await prisma.article.findUnique({
-    where: { id: articleId },
-    select: { ...SUMMARY_SELECT, content: true },
-  });
+export const getArticle = async (articleId: string): Promise<ArticleDetail> => {
+  const article = await articleRepository.findArticleById(articleId);
 
-  if (!row) {
+  if (!article) {
     throw httpError(404, 'Article not found');
   }
 
-  return withHasAudio(row);
+  return article;
 };
 
 // ─────────────────────────────────────────────
 // getArticleAudio
 // ─────────────────────────────────────────────
 /**
- * Returns the MP3 of an article. This is the ONLY query of the project that loads
+ * Returns the MP3 of an article. This is the ONLY read of the project that loads
  * audio bytes.
  *
  * @throws 404 if the article does not exist or has no audio. Both cases give the same
  *         answer on purpose: the client does the same thing either way (no player).
  */
-export const getArticleAudio = async (articleId: string) => {
-  const audio = await prisma.articleAudio.findUnique({
-    where: { articleId },
-    select: { data: true, mimeType: true, size: true },
-  });
+export const getArticleAudio = async (articleId: string): Promise<ArticleAudioFile> => {
+  const audio = await articleRepository.findArticleAudio(articleId);
 
   if (!audio) {
     throw httpError(404, 'Audio not found');

@@ -11,7 +11,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { getArticle, getArticleAudio, listArticles } from '../services/articleService';
-import { ARTICLE_LEVELS, ArticleLevel } from '../services/articleParser';
+import { ARTICLE_LEVELS, ArticleLevel } from '../types/article';
 import { handleError } from '../utils/errors';
 
 const router = Router();

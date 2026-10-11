@@ -15,6 +15,9 @@ import {
   getQuizStats,
   getWordProgress,
   MAX_ANSWERS_PER_SESSION,
+} from '../services/quizService';
+// The quiz vocabulary comes from where it is defined, not through the service.
+import {
   QUIZ_CATEGORIES,
   QUIZ_LEVELS,
   QUIZ_MODES,
@@ -22,7 +25,7 @@ import {
   QuizCategory,
   QuizLevel,
   QuizMode,
-} from '../services/quizService';
+} from '../types/quiz';
 import { handleError } from '../utils/errors';
 
 const router = Router();

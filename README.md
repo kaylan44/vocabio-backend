@@ -42,6 +42,23 @@ mobile app. The backend only stores what users did with it.
 The app never talks to PostgreSQL directly: every read and write goes through this backend.
 The dashed arrow is the article sync job, which only runs when `ARTICLES_SYNC_ENABLED` is `true`.
 
+Inside the backend, the code is organized in layers, each one calling only the next:
+
+| Layer | Folder | Role |
+|---|---|---|
+| Routes and Socket handlers | `src/routes/`, `src/sockets/` | Transport: read the input, validate it, choose the status code or the event |
+| Services | `src/services/` | Business rules: who may do what, limits, computations, real-time emission |
+| Repositories | `src/repositories/` | Database access: the only files that import Prisma |
+
+Next to the layers, `src/types/` holds the shapes they share and the ones sent to the app
+(a public user, a message, the quiz statistics, an article...). Every layer may import it,
+and it imports none of them.
+
+A service never builds a query, and a repository never takes a business decision.
+A test (`tests/repositories/boundary.test.ts`) fails if a file outside `src/repositories/`
+imports Prisma, if a repository imports from a layer above it, or if `src/types/` imports
+from another folder of `src/`.
+
 ---
 
 ## Authentication flow
@@ -151,7 +168,7 @@ One row per question of a quiz session. The vocabulary lives inside the mobile a
 ```
 
 `mode`, `category` and `level` are `TEXT`, not database enums: the allowed values are
-defined in `src/services/quizService.ts` and checked by the route. Adding a value to the
+defined in `src/types/quiz.ts` and checked by the route. Adding a value to the
 mobile app requires deploying the backend **first**, otherwise the result is rejected (400).
 
 ### `"Article"` table

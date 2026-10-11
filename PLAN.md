@@ -429,6 +429,43 @@ service, routes, scheduler (fake timers). The RLS guard covers the new migration
 
 ---
 
+## Step 8 — Repository layer
+
+**Branch:** `chore/repository-layer`
+
+A refactor with no change of behavior: same responses, same Socket events. The queries
+are the same too, except that the conversation and message queries now list their fields
+(`select`) instead of loading every column (`include`).
+
+- `src/repositories/*Repository.ts` hold every Prisma query, one file per domain
+  (users, conversations, messages, quiz, articles). The repo structure at the top of
+  this file predates this step and does not show them.
+- Services keep the business rules and call the repositories.
+- The lazy user upsert, written twice (auth middleware and Socket.io handshake), now
+  goes through `userService.ensureUser`.
+- `P2002` is translated into `UniqueConstraintError` (`src/repositories/errors.ts`),
+  which keeps the Prisma error as its `cause` for the logs.
+- `src/types/` holds the shapes shared between layers or sent to the app, so that no
+  layer imports a type from another one. Shapes describing a single query stay in
+  their repository.
+- Service functions declare their return type explicitly, except
+  `conversationService.getUserConversations`, whose list item has no declared type yet.
+- `tests/repositories/boundary.test.ts` enforces the direction of the dependencies:
+  Prisma only in the repositories, no repository importing a layer above it, nothing
+  imported by `src/types/`.
+- Migration method, in two phases. First, the existing service tests, which mocked
+  `src/lib/prisma`, were kept unmodified while the code moved: they kept passing, which
+  shows the queries did not change. Then, once that was established, they were rewritten
+  to mock the repositories, and the assertions on the shape of the queries moved to
+  `tests/repositories/`. The rewritten tests were checked by breaking service lines one
+  at a time and making sure a test failed each time.
+
+Known limit: repository tests still mock Prisma. They check the arguments of the
+queries, not that the SQL is valid. An integration test against a real PostgreSQL is
+the step that would make this layer fully pay off.
+
+---
+
 ## Architecture decisions — Summary
 
 | Decision | Choice | Reason |
@@ -449,6 +486,7 @@ service, routes, scheduler (fake timers). The RLS guard covers the new migration
 | Article audio | `Bytes` in PostgreSQL, in its own table | No file storage to configure for a private test; never loaded by a list query |
 | Audio delivery | Whole file behind the JWT, no `Range` | An audio element cannot send the JWT on web; the app downloads then plays locally |
 | Article sync | In-process timer behind a feature flag | Single Railway instance; off by default because the content is not licensed |
+| Database access | Repository layer (`src/repositories/`), modules of functions | Services read as business steps and no longer depend on Prisma types or error codes; classes with injection rejected as too much ceremony at this size |
 
 ---
 

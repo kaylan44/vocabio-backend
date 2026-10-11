@@ -15,8 +15,8 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 // Même client JWKS que le middleware HTTP (cache partagé → pas de double appel réseau)
 import { getSigningKey, SUPABASE_JWT_ALGORITHMS, SupabaseJwtPayload } from '../lib/jwt';
-import { prisma } from '../lib/prisma';
 import { userRoom } from '../lib/socket';
+import { ensureUser } from '../services/userService';
 import { registerConversationHandlers } from './handlers';
 
 /**
@@ -51,10 +51,10 @@ export const initSocketHandlers = (io: Server): void => {
 
       try {
         // Upsert lazy : même logique que le middleware HTTP
-        await prisma.user.upsert({
-          where: { id: payload.sub },
-          create: { id: payload.sub, username, avatarUrl: payload.user_metadata?.avatar_url ?? null },
-          update: {},
+        await ensureUser({
+          id: payload.sub,
+          username,
+          avatarUrl: payload.user_metadata?.avatar_url ?? null,
         });
 
         // Attacher l'user au socket pour y accéder dans les handlers
