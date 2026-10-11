@@ -453,10 +453,12 @@ are the same too, except that the conversation and message queries now list thei
 - `tests/repositories/boundary.test.ts` enforces the direction of the dependencies:
   Prisma only in the repositories, no repository importing a layer above it, nothing
   imported by `src/types/`.
-- Migration method: the existing service tests, which mock `src/lib/prisma`, were kept
-  unmodified while the code moved. They kept passing, which shows the queries did not
-  change. Repository tests were then added. Later, two of the existing tests had one
-  import line changed (a type moved to `src/types/`), nothing else.
+- Migration method, in two phases. First, the existing service tests, which mocked
+  `src/lib/prisma`, were kept unmodified while the code moved: they kept passing, which
+  shows the queries did not change. Then, once that was established, they were rewritten
+  to mock the repositories, and the assertions on the shape of the queries moved to
+  `tests/repositories/`. The rewritten tests were checked by breaking service lines one
+  at a time and making sure a test failed each time.
 
 Known limit: repository tests still mock Prisma. They check the arguments of the
 queries, not that the SQL is valid. An integration test against a real PostgreSQL is

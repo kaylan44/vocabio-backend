@@ -107,14 +107,19 @@ npm run sync:articles    # one article sync pass, then exit (needs ARTICLES_SYNC
 
 ## Tests: what we expect
 
-- Repositories are tested with Prisma mocked
-  (`jest.mock('../../src/lib/prisma')`), in `tests/repositories/`: this is
-  where the shape of a query is checked (filter by user, selected fields,
-  order). Routes are tested with `supertest` and the auth middleware mocked.
-- The service tests written before the repository layer also mock
-  `src/lib/prisma` and run through the real repositories. They are kept as
-  they are: whether to rewrite them to mock the repositories instead is a
-  decision for the developer, not something to do while passing by.
+- Each layer is tested with the layer below it mocked:
+  - repositories with Prisma mocked (`jest.mock('../../src/lib/prisma')`), in
+    `tests/repositories/`. This is where the shape of a query is checked
+    (filter by user, selected fields, order);
+  - services with their repository mocked
+    (`jest.mock('../../src/repositories/xRepository')`). They check what the
+    service decides (status codes, limits, computations, `emit`) and which
+    user or id each read is made for, not how the query is written;
+  - routes with `supertest`, the service and the auth middleware mocked.
+- Consequence to keep in mind: no test runs a service together with its real
+  repository. The link between the two is checked by the TypeScript types
+  only (`tests/middleware/auth.test.ts` is the one exception: it goes from
+  the middleware down to the Prisma mock).
 - A test must check a **behavior** (HTTP status, returned data, `emit` called
   with the right arguments, error thrown), not just "the mocked function was
   called". A test that would still pass with a wrong implementation is useless:
