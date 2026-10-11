@@ -9,12 +9,12 @@
 // site still has this structure. That is checked by a manual run against the live API.
 
 import {
-  ArticleBlock,
   buildExcerpt,
   EXCERPT_MAX_LENGTH,
   parseIsoDuration,
   parsePost,
 } from '../../src/services/articleParser';
+import { ArticleBlock } from '../../src/types/article';
 
 // ─────────────────────────────────────────────
 // Fixture builders

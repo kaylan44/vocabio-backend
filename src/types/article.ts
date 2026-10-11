@@ -1,8 +1,7 @@
 // Shared article types: the allowed levels, the structure of the text, and what the
 // client receives. See src/types/user.ts for why such shapes live in src/types/.
 //
-// Import from this file directly. articleParser.ts still re-exports ArticleBlock, for
-// one existing test only (the reason is written there).
+// Import from this file directly: articleParser.ts does not re-export anything from it.
 
 // ─────────────────────────────────────────────
 // Level and text structure

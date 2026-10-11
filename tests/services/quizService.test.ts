@@ -25,8 +25,8 @@ import {
   createQuizSession,
   getQuizStats,
   MOST_MISSED_LIMIT,
-  QuizAnswerInput,
 } from '../../src/services/quizService';
+import { QuizAnswerInput } from '../../src/types/quiz';
 import { prisma } from '../../src/lib/prisma';
 
 const mockFindUnique = prisma.quizSession.findUnique as jest.Mock;

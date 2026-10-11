@@ -40,13 +40,7 @@ import { ArticleBlock, ArticleLevel, ArticleSegment } from '../types/article';
 // ─────────────────────────────────────────────
 // The level list and the structure of the text are declared in src/types/article.ts,
 // because the article repository needs them too and must not import from a service.
-// Import them from there.
-//
-// Temporary re-export, for ONE existing import: tests/services/articleParser.test.ts
-// reads ArticleBlock from this parser, and an existing test is not edited without the
-// developer's approval (see CLAUDE.md). Remove this line when that import points to
-// src/types/article.
-export type { ArticleBlock };
+// Import them from there: this file does not re-export them.
 
 // The output of the parser. It stays here: only the ingestion reads it.
 export interface ParsedArticle {

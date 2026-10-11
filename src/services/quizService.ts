@@ -26,13 +26,7 @@ import {
 // ─────────────────────────────────────────────
 // The allowed modes, categories and levels, and the shape of one answer, are declared
 // in src/types/quiz.ts: the quiz repository needs them too and must not import from a
-// service. Import them from there.
-//
-// Temporary re-export, for ONE existing import: tests/services/quizService.test.ts
-// reads QuizAnswerInput from this service, and an existing test is not edited without
-// the developer's approval (see CLAUDE.md). Remove this line when that import points
-// to src/types/quiz.
-export type { QuizAnswerInput };
+// service. Import them from there: this file does not re-export them.
 
 // A quiz has 10 questions today. 50 leaves room for longer quizzes while still
 // bounding the size of one insert.
