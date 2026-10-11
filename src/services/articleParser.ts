@@ -33,17 +33,20 @@
 
 import { parse, HTMLElement, Node, NodeType } from 'node-html-parser';
 import { EASY_CATEGORY_ID, INTERMEDIATE_CATEGORY_ID, isSourceUrl } from '../lib/holaQuePasa';
-import { ARTICLE_LEVELS, ArticleBlock, ArticleLevel, ArticleSegment } from '../types/article';
+import { ArticleBlock, ArticleLevel, ArticleSegment } from '../types/article';
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
 // The level list and the structure of the text are declared in src/types/article.ts,
 // because the article repository needs them too and must not import from a service.
-// They are re-exported here so the routes and the tests keep importing them from the
-// parser, as before.
-export { ARTICLE_LEVELS };
-export type { ArticleBlock, ArticleLevel, ArticleSegment };
+// Import them from there.
+//
+// Temporary re-export, for ONE existing import: tests/services/articleParser.test.ts
+// reads ArticleBlock from this parser, and an existing test is not edited without the
+// developer's approval (see CLAUDE.md). Remove this line when that import points to
+// src/types/article.
+export type { ArticleBlock };
 
 // The output of the parser. It stays here: only the ingestion reads it.
 export interface ParsedArticle {

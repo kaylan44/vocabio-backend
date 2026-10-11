@@ -6,8 +6,8 @@
 // the service (business rules) and the repository (storage) need the answer type; the
 // repository must not import it from the service, which is the layer above it.
 //
-// quizService.ts re-exports everything here, so the routes and the tests keep
-// importing the quiz vocabulary from the service as before.
+// Import from this file directly. quizService.ts still re-exports QuizAnswerInput,
+// for one existing test only (the reason is written there).
 
 // ─────────────────────────────────────────────
 // Allowed values
