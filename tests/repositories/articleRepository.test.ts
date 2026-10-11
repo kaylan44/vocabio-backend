@@ -32,6 +32,7 @@ import {
   findArticleById,
   findArticleSummaries,
   findStoredByExternalIds,
+  NewArticle,
 } from '../../src/repositories/articleRepository';
 import { UniqueConstraintError } from '../../src/repositories/errors';
 
@@ -58,7 +59,8 @@ const storedRow = (audio: { articleId: string } | null) => ({
   audio,
 });
 
-const newArticle = {
+// Typed: the write side only accepts a known level and structured text.
+const newArticle: NewArticle = {
   source: 'holaquepasa',
   externalId: '74003',
   lang: 'es',

@@ -6,19 +6,10 @@
 // real-time broadcast fails.
 
 import { prisma } from '../lib/prisma';
-import { PUBLIC_USER_SELECT, PublicUser } from './userRepository';
+import { MessageWithSender } from '../types/message';
+import { PUBLIC_USER_SELECT } from './userRepository';
 
-export interface MessageWithSender {
-  id: string;
-  conversationId: string;
-  senderId: string;
-  content: string;
-  createdAt: Date;
-  readAt: Date | null;
-  sender: PublicUser;
-}
-
-// Exactly the fields of MessageWithSender. `select` and not `include`: `include`
+// Exactly the fields of MessageWithSender (src/types/message.ts). `select` and not `include`: `include`
 // returns every column of Message, so a column added later would be sent to the
 // client (REST response and `new_message` event) without anyone deciding it.
 //

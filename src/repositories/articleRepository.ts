@@ -10,44 +10,26 @@
 //     internal fields nor load audio bytes by accident;
 //   - the ingestion job (articleIngestService), the only writer.
 //
-// Why `level` is a plain string and `content` is `unknown` here, while the services
-// have precise types for them (ArticleLevel, ArticleBlock[]): those types belong to
-// the parser, in src/services/. Importing them would make this layer depend on the
-// one above it. The database stores a string and a JSON value; saying what they MEAN
-// is the job of the services.
+// The shapes the client receives (ArticleSummary, ArticleDetail, ArticleAudioFile) are
+// declared in src/types/article.ts, which also explains why `level` and `content` are
+// loosely typed when READ and precisely typed when WRITTEN.
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import {
+  ArticleAudioFile,
+  ArticleBlock,
+  ArticleDetail,
+  ArticleLevel,
+  ArticleSummary,
+} from '../types/article';
 import { toRepositoryError } from './errors';
 
 // ─────────────────────────────────────────────
-// Shapes exchanged with the services
+// Shapes exchanged with the ingestion only
 // ─────────────────────────────────────────────
-
-export interface ArticleSummary {
-  id: string;
-  source: string;
-  lang: string;
-  level: string | null;
-  title: string;
-  excerpt: string;
-  url: string;
-  publishedAt: Date;
-  audioDurationSec: number | null;
-  // Whether an audio row exists: the client only needs to know whether it can call
-  // the audio route.
-  hasAudio: boolean;
-}
-
-export interface ArticleDetail extends ArticleSummary {
-  content: unknown; // the JSON stored at ingestion (ArticleBlock[], see articleParser.ts)
-}
-
-export interface ArticleAudioFile {
-  data: Buffer;
-  mimeType: string;
-  size: number;
-}
+// They stay in this file, unlike the shapes of src/types/: each one describes the
+// input or the result of one query below and is used by articleIngestService only.
 
 // What the ingestion needs to know about an article it may already have.
 export interface StoredArticleRef {
@@ -65,10 +47,10 @@ export interface NewArticle {
   source: string;
   externalId: string;
   lang: string;
-  level: string | null;
+  level: ArticleLevel | null;
   title: string;
   excerpt: string;
-  content: unknown; // plain JSON: arrays of objects of strings
+  content: ArticleBlock[];
   url: string;
   audioSourceUrl: string | null;
   audioDurationSec: number | null;
@@ -115,7 +97,7 @@ const withHasAudio = <Row extends { audio: { articleId: string } | null }>(row: 
  *                those whose level is unknown (null).
  */
 export const findArticleSummaries = async (
-  level: string | undefined,
+  level: ArticleLevel | undefined,
   offset: number,
   limit: number
 ): Promise<ArticleSummary[]> => {
@@ -203,10 +185,11 @@ export const createArticle = async (
         level: article.level,
         title: article.title,
         excerpt: article.excerpt,
-        // Prisma's Json input type does not accept an arbitrary value directly (it
-        // wants an index signature). The value IS plain JSON: arrays of objects of
-        // strings. The cast lives here so no service has to know a Prisma type.
-        content: article.content as Prisma.InputJsonValue,
+        // Prisma's Json input type does not accept our interface directly (it wants
+        // an index signature), hence the double cast. The value IS plain JSON: arrays
+        // of objects of strings. The cast lives here so no service has to know a
+        // Prisma type.
+        content: article.content as unknown as Prisma.InputJsonValue,
         url: article.url,
         audioSourceUrl: article.audioSourceUrl,
         audioDurationSec: article.audioDurationSec,

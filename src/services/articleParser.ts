@@ -33,29 +33,19 @@
 
 import { parse, HTMLElement, Node, NodeType } from 'node-html-parser';
 import { EASY_CATEGORY_ID, INTERMEDIATE_CATEGORY_ID, isSourceUrl } from '../lib/holaQuePasa';
+import { ARTICLE_LEVELS, ArticleBlock, ArticleLevel, ArticleSegment } from '../types/article';
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
-// `as const` + derived type: same trick as QUIZ_MODES in quizService.ts. The route
-// validates the `level` query parameter against this list.
-export const ARTICLE_LEVELS = ['easy', 'intermediate'] as const;
-export type ArticleLevel = (typeof ARTICLE_LEVELS)[number];
+// The level list and the structure of the text are declared in src/types/article.ts,
+// because the article repository needs them too and must not import from a service.
+// They are re-exported here so the routes and the tests keep importing them from the
+// parser, as before.
+export { ARTICLE_LEVELS };
+export type { ArticleBlock, ArticleLevel, ArticleSegment };
 
-// A piece of a paragraph. `gloss` is present when the source explains the phrase
-// (in English: the site targets English speakers).
-export interface ArticleSegment {
-  text: string;
-  gloss?: string;
-}
-
-// `type` is always 'paragraph' today. It is there so that a heading or a list can be
-// added later without changing the shape the app already reads.
-export interface ArticleBlock {
-  type: 'paragraph';
-  segments: ArticleSegment[];
-}
-
+// The output of the parser. It stays here: only the ingestion reads it.
 export interface ParsedArticle {
   externalId: string;
   title: string;

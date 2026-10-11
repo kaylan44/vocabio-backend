@@ -11,11 +11,20 @@
 // (`session: { userId }`), because QuizAnswer has no userId column.
 
 import { prisma } from '../lib/prisma';
+import { QuizAnswerInput, QuizMode } from '../types/quiz';
 import { toRepositoryError } from './errors';
 
 // ─────────────────────────────────────────────
 // Shapes exchanged with the service
 // ─────────────────────────────────────────────
+// They stay in this file, unlike the shapes of src/types/: each one describes the
+// input or the result of ONE query below and is read by quizService only. Keeping
+// them next to the query avoids opening two files to change one.
+//
+// Read side and write side are typed differently on purpose. What is WRITTEN uses
+// the precise types (QuizMode, QuizAnswerInput): the route validated the values.
+// What is READ is typed `string`: `mode`, `category` and `level` are String columns,
+// which guarantee nothing about their content.
 
 // A session as stored. `userId` is included so the service can check the owner; the
 // service removes it before answering the client.
@@ -28,21 +37,14 @@ export interface StoredQuizSession {
   createdAt: Date;
 }
 
-export interface NewQuizAnswer {
-  wordId: string;
-  category: string;
-  level: string;
-  isCorrect: boolean;
-}
-
 export interface NewQuizSession {
   id: string;
   userId: string;
-  mode: string;
+  mode: QuizMode;
   score: number;
   total: number;
   // In the order the questions were asked: the index becomes `position`.
-  answers: NewQuizAnswer[];
+  answers: QuizAnswerInput[];
 }
 
 export interface ModeTotals {

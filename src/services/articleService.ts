@@ -9,7 +9,7 @@
 // which fields leave the server.
 
 import * as articleRepository from '../repositories/articleRepository';
-import { ArticleLevel } from './articleParser';
+import { ArticleLevel } from '../types/article';
 
 // Same error convention as assertParticipant (conversationService.ts): a plain Error
 // carrying a `statusCode`, which handleError() turns into the HTTP status.

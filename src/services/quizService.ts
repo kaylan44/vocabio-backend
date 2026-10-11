@@ -13,33 +13,25 @@
 
 import { UniqueConstraintError } from '../repositories/errors';
 import * as quizRepository from '../repositories/quizRepository';
+import {
+  QUIZ_CATEGORIES,
+  QUIZ_LEVELS,
+  QUIZ_MODES,
+  QuizAnswerInput,
+  QuizCategory,
+  QuizLevel,
+  QuizMode,
+} from '../types/quiz';
 
 // ─────────────────────────────────────────────
 // Allowed values and limits
 // ─────────────────────────────────────────────
-// These lists mirror the types of the mobile app (vocabio2, types/index.ts).
-// They are plain strings in the database (see prisma/schema.prisma for why not
-// enums), so this is the only place where an unknown value gets rejected.
-//
-// Pitfall: a new mode, category or level in the app requires this backend to be
-// deployed FIRST. Otherwise the route answers 400 and the quiz result is lost.
-//
-// `as const` turns each array into a tuple of literal types, which lets us derive
-// the union types below instead of writing the same values twice.
-export const QUIZ_MODES = ['fr-es', 'es-fr'] as const;
-export const QUIZ_CATEGORIES = [
-  'noun',
-  'verb',
-  'adjective',
-  'adverb',
-  'expression',
-  'pronoun',
-] as const;
-export const QUIZ_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1'] as const;
-
-export type QuizMode = (typeof QUIZ_MODES)[number];
-export type QuizCategory = (typeof QUIZ_CATEGORIES)[number];
-export type QuizLevel = (typeof QUIZ_LEVELS)[number];
+// The allowed modes, categories and levels, and the shape of one answer, are declared
+// in src/types/quiz.ts: the quiz repository needs them too and must not import from a
+// service. They are re-exported here so the routes and the tests keep importing the
+// quiz vocabulary from this service, as before.
+export { QUIZ_CATEGORIES, QUIZ_LEVELS, QUIZ_MODES };
+export type { QuizAnswerInput, QuizCategory, QuizLevel, QuizMode };
 
 // A quiz has 10 questions today. 50 leaves room for longer quizzes while still
 // bounding the size of one insert.
@@ -48,13 +40,6 @@ export const MAX_ANSWERS_PER_SESSION = 50;
 export const MOST_MISSED_LIMIT = 10;
 // Rate limit: a user cannot create more than one session in this time window.
 export const MIN_SECONDS_BETWEEN_SESSIONS = 10;
-
-export interface QuizAnswerInput {
-  wordId: string;
-  category: QuizCategory;
-  level: QuizLevel;
-  isCorrect: boolean;
-}
 
 // Same error convention as assertParticipant (conversationService.ts): a plain
 // Error carrying a `statusCode`, which handleError() turns into the HTTP status.

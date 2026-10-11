@@ -6,43 +6,20 @@
 // the answer into a 403.
 
 import { prisma } from '../lib/prisma';
-import { PUBLIC_USER_SELECT, PublicUser } from './userRepository';
+import { ConversationWithLastMessage, ConversationWithParticipants } from '../types/conversation';
+import { PUBLIC_USER_SELECT } from './userRepository';
 
 // ─────────────────────────────────────────────
 // Shapes returned to the services
 // ─────────────────────────────────────────────
-// Written by hand instead of inferred from Prisma, so that a service (and the REST
-// response built from it) does not change shape because a query changed.
+// The return types are declared in src/types/conversation.ts: written by hand instead
+// of inferred from Prisma, so that a service (and the REST response built from it)
+// does not change shape because a query changed.
 //
 // An interface alone would not be enough: TypeScript accepts an object that has MORE
 // fields than its type says. This is why every query below uses `select` and never
 // `include`: `include` returns all the columns of the table, so a column added later
 // would reach the client while these interfaces still claimed otherwise.
-
-export interface ConversationParticipant {
-  conversationId: string;
-  userId: string;
-  user: PublicUser;
-}
-
-export interface ConversationWithParticipants {
-  id: string;
-  createdAt: Date;
-  participants: ConversationParticipant[];
-}
-
-export interface LastMessage {
-  id: string;
-  content: string;
-  createdAt: Date;
-  senderId: string;
-  readAt: Date | null;
-}
-
-export interface ConversationWithLastMessage extends ConversationWithParticipants {
-  // null when nobody has written in the conversation yet.
-  lastMessage: LastMessage | null;
-}
 
 // Single definition of "a conversation with its participants", shared by the three
 // queries below so they can never return different fields. It lists exactly the

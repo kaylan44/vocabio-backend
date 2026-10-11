@@ -5,7 +5,7 @@
 // ce qui permet de tester la logique sans passer par HTTP.
 
 import * as userRepository from '../repositories/userRepository';
-import { PublicUser } from '../repositories/userRepository';
+import { PublicUser } from '../types/user';
 
 // Plafond de sécurité : la liste est chargée d'un bloc par l'app (pas de pagination).
 // Au-delà, l'écran bascule naturellement sur la recherche par nom.

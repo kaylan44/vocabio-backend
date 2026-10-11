@@ -25,6 +25,11 @@ Functional details: `README.md`. Historical implementation plan: `PLAN.md`.
     mapping of Prisma results to plain objects, with explicit return types.
     No business decision, no status code. A write that must be atomic stays in
     ONE repository function (nested create).
+  - `src/types/*`: shapes shared between layers or sent to the client
+    (`PublicUser`, `MessageWithSender`, the quiz and article vocabulary). It
+    imports from no other layer. A shape that only describes the result of ONE
+    query and is read by one service stays in its repository. A repository
+    never imports from `src/services/`.
   - The middleware and the Socket.io handshake follow the same rule: they call
     a service (`userService.ensureUser`), never Prisma.
   - Guarded by `tests/repositories/boundary.test.ts`, which fails when a file

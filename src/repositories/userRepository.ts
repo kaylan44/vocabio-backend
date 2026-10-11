@@ -12,18 +12,11 @@
 // follow the same shape.
 
 import { prisma } from '../lib/prisma';
+import { PublicUser } from '../types/user';
 
-// What the rest of the application is allowed to know about a user. Declared by hand
-// rather than inferred from Prisma: a column added to the table later stays private
-// until someone lists it here.
-export interface PublicUser {
-  id: string;
-  username: string;
-  avatarUrl: string | null;
-}
-
-// Single definition of the fields selected for a PublicUser. Exported so that the
-// other repositories load a user (a sender, a participant) with exactly these fields.
+// Single definition of the fields selected for a PublicUser (src/types/user.ts): the
+// two must list the same fields. Exported so that the other repositories load a user
+// (a sender, a participant) with exactly these fields.
 export const PUBLIC_USER_SELECT = { id: true, username: true, avatarUrl: true } as const;
 
 /**

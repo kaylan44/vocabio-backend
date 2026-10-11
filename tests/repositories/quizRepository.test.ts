@@ -33,6 +33,7 @@ import {
   findLatestSessionOf,
   findMostMissedWords,
   findSessionById,
+  NewQuizSession,
   sumSessionsByMode,
 } from '../../src/repositories/quizRepository';
 
@@ -54,7 +55,8 @@ const storedSession = {
   createdAt: new Date('2026-10-01T10:00:00.000Z'),
 };
 
-const newSession = {
+// Typed: the write side only accepts the allowed modes, categories and levels.
+const newSession: NewQuizSession = {
   id: SESSION_ID,
   userId: 'user-1',
   mode: 'fr-es',
