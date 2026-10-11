@@ -1,45 +1,43 @@
 // Unit tests of quizService.getWordProgress.
 //
-// Kept apart from quizService.test.ts so that file stays untouched. Prisma is
-// mocked: these tests check how the answers are folded into counters, NOT that the
-// query really returns them oldest first (the test hands them over already sorted,
-// as the database is asked to).
+// Kept apart from quizService.test.ts so that file stays untouched. The repository
+// is mocked: these tests check how the answers are folded into counters, NOT that the
+// query really returns them oldest first (the test hands them over already sorted, as
+// the repository promises to). That the query asks for this order, for this user only,
+// is checked in tests/repositories/quizRepository.test.ts.
 
-jest.mock('../../src/lib/prisma', () => ({
-  prisma: {
-    quizAnswer: {
-      findMany: jest.fn(),
-    },
-  },
+jest.mock('../../src/repositories/quizRepository', () => ({
+  findAnswersOldestFirst: jest.fn(),
 }));
 
 import { getWordProgress } from '../../src/services/quizService';
-import { prisma } from '../../src/lib/prisma';
+import { findAnswersOldestFirst } from '../../src/repositories/quizRepository';
 
-const mockFindMany = prisma.quizAnswer.findMany as jest.Mock;
+const mockFindAnswers = findAnswersOldestFirst as jest.Mock;
 
 const DAY_1 = new Date('2026-10-01T10:00:00.000Z');
 const DAY_2 = new Date('2026-10-02T10:00:00.000Z');
 const DAY_3 = new Date('2026-10-03T10:00:00.000Z');
 
-// An answer as Prisma returns it with the service's select.
+// An answer as the repository returns it: with the mode and the date of its session.
 const answer = (wordId: string, isCorrect: boolean, mode = 'fr-es', createdAt = DAY_1) => ({
   wordId,
   isCorrect,
-  session: { mode, createdAt },
+  mode,
+  createdAt,
 });
 
 describe('quizService.getWordProgress', () => {
   beforeEach(() => jest.resetAllMocks());
 
   it('returns an empty array for a user with no finished quiz', async () => {
-    mockFindMany.mockResolvedValue([]);
+    mockFindAnswers.mockResolvedValue([]);
 
     expect(await getWordProgress('user-1')).toEqual([]);
   });
 
   it('counts the answers and the correct ones of a word', async () => {
-    mockFindMany.mockResolvedValue([
+    mockFindAnswers.mockResolvedValue([
       answer('n001', true, 'fr-es', DAY_1),
       answer('n001', false, 'fr-es', DAY_2),
       answer('n001', true, 'fr-es', DAY_3),
@@ -58,7 +56,7 @@ describe('quizService.getWordProgress', () => {
   });
 
   it('counts a streak of correct answers', async () => {
-    mockFindMany.mockResolvedValue([
+    mockFindAnswers.mockResolvedValue([
       answer('n001', true, 'fr-es', DAY_1),
       answer('n001', true, 'fr-es', DAY_2),
       answer('n001', true, 'fr-es', DAY_3),
@@ -70,7 +68,7 @@ describe('quizService.getWordProgress', () => {
   });
 
   it('puts the streak back to 0 when the latest answer is wrong', async () => {
-    mockFindMany.mockResolvedValue([
+    mockFindAnswers.mockResolvedValue([
       answer('n001', true, 'fr-es', DAY_1),
       answer('n001', true, 'fr-es', DAY_2),
       answer('n001', false, 'fr-es', DAY_3),
@@ -82,7 +80,7 @@ describe('quizService.getWordProgress', () => {
   });
 
   it('restarts the streak after a wrong answer instead of resuming the old one', async () => {
-    mockFindMany.mockResolvedValue([
+    mockFindAnswers.mockResolvedValue([
       answer('n001', true, 'fr-es', DAY_1),
       answer('n001', true, 'fr-es', DAY_1),
       answer('n001', false, 'fr-es', DAY_2),
@@ -95,7 +93,7 @@ describe('quizService.getWordProgress', () => {
   });
 
   it('tracks fr-es and es-fr separately for the same word', async () => {
-    mockFindMany.mockResolvedValue([
+    mockFindAnswers.mockResolvedValue([
       answer('n001', true, 'fr-es', DAY_1),
       answer('n001', false, 'es-fr', DAY_2),
       answer('n001', true, 'fr-es', DAY_3),
@@ -119,7 +117,7 @@ describe('quizService.getWordProgress', () => {
   });
 
   it('keeps the counters of different words apart', async () => {
-    mockFindMany.mockResolvedValue([
+    mockFindAnswers.mockResolvedValue([
       answer('n001', true),
       answer('v042', false),
       answer('n001', true),
@@ -131,18 +129,14 @@ describe('quizService.getWordProgress', () => {
     expect(rows.find((row) => row.wordId === 'v042')).toMatchObject({ totalSeen: 1, correctStreak: 0 });
   });
 
-  it('reads the answers of the given user only, oldest first', async () => {
-    mockFindMany.mockResolvedValue([]);
+  it('reads the answers of the given user only', async () => {
+    mockFindAnswers.mockResolvedValue([]);
 
     await getWordProgress('user-1');
 
-    const query = mockFindMany.mock.calls[0][0];
-    expect(query.where).toEqual({ session: { userId: 'user-1' } });
-    // The streak is only right if the answers are folded in chronological order.
-    expect(query.orderBy).toEqual([
-      { session: { createdAt: 'asc' } },
-      { sessionId: 'asc' },
-      { position: 'asc' },
-    ]);
+    // The chronological order the streak depends on is the repository's query,
+    // checked in quizRepository.test.ts.
+    expect(mockFindAnswers).toHaveBeenCalledTimes(1);
+    expect(mockFindAnswers).toHaveBeenCalledWith('user-1');
   });
 });
