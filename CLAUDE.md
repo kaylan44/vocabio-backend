@@ -24,17 +24,22 @@ Functional details: `README.md`. Historical implementation plan: `PLAN.md`.
   - `src/repositories/*`: the only files that import Prisma. Queries and the
     mapping of Prisma results to plain objects, with explicit return types.
     No business decision, no status code. A write that must be atomic stays in
-    ONE repository function (nested create).
+    ONE repository function (nested create). Queries list their fields with
+    `select`, never `include`: `include` returns every column of the table, so
+    a column added later would reach the client without anyone deciding it.
   - `src/types/*`: shapes shared between layers or sent to the client
     (`PublicUser`, `MessageWithSender`, the quiz and article vocabulary). It
     imports from no other layer. A shape that only describes the result of ONE
     query and is read by one service stays in its repository. A repository
-    never imports from `src/services/`.
+    never imports from `src/services/`. A new service function declares its
+    return type explicitly, with a shape from `src/types/`: the response sent
+    to the app is then named, and changing it by accident does not compile.
   - The middleware and the Socket.io handshake follow the same rule: they call
     a service (`userService.ensureUser`), never Prisma.
   - Guarded by `tests/repositories/boundary.test.ts`, which fails when a file
-    outside `src/repositories/` imports Prisma. Its two exceptions are listed
-    in the test.
+    outside `src/repositories/` imports Prisma (its two exceptions are listed
+    in the test), when a repository imports from a layer above it, or when
+    `src/types/` imports from another folder of `src/`.
   - `src/sockets/handlers.ts`: calls the **same** services as the routes.
     Core rule: `messageService.createMessage` is the single path for creating
     a message (REST and Socket); it persists, then emits `new_message`.
@@ -102,8 +107,14 @@ npm run sync:articles    # one article sync pass, then exit (needs ARTICLES_SYNC
 
 ## Tests: what we expect
 
-- Services are tested with Prisma mocked (`jest.mock('../../src/lib/prisma')`),
-  routes with `supertest` and the auth middleware mocked.
+- Repositories are tested with Prisma mocked
+  (`jest.mock('../../src/lib/prisma')`), in `tests/repositories/`: this is
+  where the shape of a query is checked (filter by user, selected fields,
+  order). Routes are tested with `supertest` and the auth middleware mocked.
+- The service tests written before the repository layer also mock
+  `src/lib/prisma` and run through the real repositories. They are kept as
+  they are: whether to rewrite them to mock the repositories instead is a
+  decision for the developer, not something to do while passing by.
 - A test must check a **behavior** (HTTP status, returned data, `emit` called
   with the right arguments, error thrown), not just "the mocked function was
   called". A test that would still pass with a wrong implementation is useless:

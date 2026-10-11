@@ -50,9 +50,14 @@ Inside the backend, the code is organized in layers, each one calling only the n
 | Services | `src/services/` | Business rules: who may do what, limits, computations, real-time emission |
 | Repositories | `src/repositories/` | Database access: the only files that import Prisma |
 
+Next to the layers, `src/types/` holds the shapes they share and the ones sent to the app
+(a public user, a message, the quiz statistics, an article...). Every layer may import it,
+and it imports none of them.
+
 A service never builds a query, and a repository never takes a business decision.
 A test (`tests/repositories/boundary.test.ts`) fails if a file outside `src/repositories/`
-imports Prisma.
+imports Prisma, if a repository imports from a layer above it, or if `src/types/` imports
+from another folder of `src/`.
 
 ---
 

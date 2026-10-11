@@ -433,7 +433,9 @@ service, routes, scheduler (fake timers). The RLS guard covers the new migration
 
 **Branch:** `chore/repository-layer`
 
-A refactor with no change of behavior: same queries, same responses, same Socket events.
+A refactor with no change of behavior: same responses, same Socket events. The queries
+are the same too, except that the conversation and message queries now list their fields
+(`select`) instead of loading every column (`include`).
 
 - `src/repositories/*Repository.ts` hold every Prisma query, one file per domain
   (users, conversations, messages, quiz, articles). The repo structure at the top of
@@ -441,10 +443,20 @@ A refactor with no change of behavior: same queries, same responses, same Socket
 - Services keep the business rules and call the repositories.
 - The lazy user upsert, written twice (auth middleware and Socket.io handshake), now
   goes through `userService.ensureUser`.
-- `P2002` is translated into `UniqueConstraintError` (`src/repositories/errors.ts`).
+- `P2002` is translated into `UniqueConstraintError` (`src/repositories/errors.ts`),
+  which keeps the Prisma error as its `cause` for the logs.
+- `src/types/` holds the shapes shared between layers or sent to the app, so that no
+  layer imports a type from another one. Shapes describing a single query stay in
+  their repository.
+- Service functions declare their return type explicitly, except
+  `conversationService.getUserConversations`, whose list item has no declared type yet.
+- `tests/repositories/boundary.test.ts` enforces the direction of the dependencies:
+  Prisma only in the repositories, no repository importing a layer above it, nothing
+  imported by `src/types/`.
 - Migration method: the existing service tests, which mock `src/lib/prisma`, were kept
   unmodified while the code moved. They kept passing, which shows the queries did not
-  change. Repository tests were then added.
+  change. Repository tests were then added. Later, two of the existing tests had one
+  import line changed (a type moved to `src/types/`), nothing else.
 
 Known limit: repository tests still mock Prisma. They check the arguments of the
 queries, not that the SQL is valid. An integration test against a real PostgreSQL is
