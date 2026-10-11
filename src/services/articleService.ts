@@ -45,7 +45,7 @@ export const listArticles = async (
 // getArticle
 // ─────────────────────────────────────────────
 /**
- * Returns one article with its text (`content`: ArticleBlock[], see articleParser.ts).
+ * Returns one article with its text (`content`: ArticleBlock[], see src/types/article.ts).
  *
  * @throws 404 if no article has this id (unknown, or purged since the list was loaded)
  */

@@ -95,7 +95,7 @@ model Message {
 // (letters, digits, "_"), so 'fr-es' would need `fr_es @map("fr-es")` plus a
 // conversion in the service, and every new mode would need a migration.
 // Trade-off: the database does not reject an unknown value by itself; the route
-// is the only write path and validates it (see QUIZ_MODES in quizService.ts).
+// is the only write path and validates it (see QUIZ_MODES in src/types/quiz.ts).
 //
 // score and total are redundant with the answers, but storing them here lets the
 // common aggregates (number of quizzes, average score) run without a join.
@@ -160,7 +160,7 @@ model QuizAnswer {
 //   ingestion runs overlap.
 //
 // content is JSON (a list of paragraphs made of text segments, see ArticleBlock in
-// src/services/articleParser.ts), NOT the HTML of the source: the app has no HTML
+// src/types/article.ts), NOT the HTML of the source: the app has no HTML
 // renderer, and storing plain text removes any script-injection risk on web.
 //
 // source / lang / level are Strings, not enums, for the same reason as

@@ -163,7 +163,7 @@ One row per question of a quiz session. The vocabulary lives inside the mobile a
 ```
 
 `mode`, `category` and `level` are `TEXT`, not database enums: the allowed values are
-defined in `src/services/quizService.ts` and checked by the route. Adding a value to the
+defined in `src/types/quiz.ts` and checked by the route. Adding a value to the
 mobile app requires deploying the backend **first**, otherwise the result is rejected (400).
 
 ### `"Article"` table
