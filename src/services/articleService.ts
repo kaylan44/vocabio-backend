@@ -9,7 +9,7 @@
 // which fields leave the server.
 
 import * as articleRepository from '../repositories/articleRepository';
-import { ArticleLevel } from '../types/article';
+import { ArticleAudioFile, ArticleDetail, ArticleLevel, ArticleSummary } from '../types/article';
 
 // Same error convention as assertParticipant (conversationService.ts): a plain Error
 // carrying a `statusCode`, which handleError() turns into the HTTP status.
@@ -37,7 +37,7 @@ export const listArticles = async (
   level: ArticleLevel | undefined,
   offset: number,
   limit: number
-) => {
+): Promise<ArticleSummary[]> => {
   return articleRepository.findArticleSummaries(level, offset, limit);
 };
 
@@ -49,7 +49,7 @@ export const listArticles = async (
  *
  * @throws 404 if no article has this id (unknown, or purged since the list was loaded)
  */
-export const getArticle = async (articleId: string) => {
+export const getArticle = async (articleId: string): Promise<ArticleDetail> => {
   const article = await articleRepository.findArticleById(articleId);
 
   if (!article) {
@@ -69,7 +69,7 @@ export const getArticle = async (articleId: string) => {
  * @throws 404 if the article does not exist or has no audio. Both cases give the same
  *         answer on purpose: the client does the same thing either way (no player).
  */
-export const getArticleAudio = async (articleId: string) => {
+export const getArticleAudio = async (articleId: string): Promise<ArticleAudioFile> => {
   const audio = await articleRepository.findArticleAudio(articleId);
 
   if (!audio) {

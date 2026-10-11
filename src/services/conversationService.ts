@@ -7,6 +7,7 @@
 
 import * as conversationRepository from '../repositories/conversationRepository';
 import * as messageRepository from '../repositories/messageRepository';
+import { ConversationWithParticipants } from '../types/conversation';
 
 // ─────────────────────────────────────────────
 // getOrCreateConversation
@@ -24,7 +25,10 @@ import * as messageRepository from '../repositories/messageRepository';
  * On cherche une conversation où A est participant ET B est participant.
  * La requête Prisma utilise deux "some" imbriqués pour ça.
  */
-export const getOrCreateConversation = async (userId: string, recipientId: string) => {
+export const getOrCreateConversation = async (
+  userId: string,
+  recipientId: string
+): Promise<ConversationWithParticipants> => {
   // Étape 1 : chercher une conversation existante entre les deux utilisateurs.
   const existing = await conversationRepository.findConversationBetween(userId, recipientId);
 

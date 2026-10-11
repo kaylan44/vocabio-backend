@@ -11,6 +11,7 @@
 import { getIO, userRoom } from '../lib/socket';
 import * as conversationRepository from '../repositories/conversationRepository';
 import * as messageRepository from '../repositories/messageRepository';
+import { MessageWithSender } from '../types/message';
 
 /**
  * Rooms à notifier pour un événement de conversation : la room de la conversation
@@ -42,7 +43,7 @@ export const createMessage = async (
   conversationId: string,
   senderId: string,
   content: string
-) => {
+): Promise<MessageWithSender> => {
   // Étape 1 : Persister le message en base de données
   const message = await messageRepository.createMessage(conversationId, senderId, content);
 
@@ -87,7 +88,7 @@ export const getMessages = async (
   conversationId: string,
   offset: number = 0,
   limit: number = 30
-) => {
+): Promise<MessageWithSender[]> => {
   return messageRepository.findMessages(conversationId, offset, limit);
 };
 

@@ -38,7 +38,7 @@ export const ensureUser = async (user: PublicUser): Promise<void> => {
  *
  * @param excludeUserId - L'ID de l'utilisateur connecté
  */
-export const listUsers = async (excludeUserId: string) => {
+export const listUsers = async (excludeUserId: string): Promise<PublicUser[]> => {
   return userRepository.findUsers(excludeUserId, LIST_USERS_LIMIT);
 };
 
@@ -52,7 +52,10 @@ export const listUsers = async (excludeUserId: string) => {
  * @param query - Le texte saisi par l'utilisateur dans la barre de recherche
  * @param excludeUserId - L'ID de l'utilisateur connecté (on ne s'affiche pas dans ses propres résultats)
  */
-export const searchUsers = async (query: string, excludeUserId: string) => {
+export const searchUsers = async (
+  query: string,
+  excludeUserId: string
+): Promise<PublicUser[]> => {
   if (!query || query.trim().length === 0) {
     return [];
   }
