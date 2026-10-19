@@ -466,6 +466,66 @@ the step that would make this layer fully pay off.
 
 ---
 
+## Step 9 — Indonesian (planned)
+
+**Branch:** `feat/indonesian-modes`
+
+The app gets a second language to learn, Indonesian, next to Spanish. The vocabulary
+stays in the app (plan on the app side: `vocabio2/PLAN.md`), so the backend only has to
+accept the new values and separate the statistics by language. This PR is merged and
+deployed **before** the app PR: otherwise `POST /quiz-sessions` answers 400 to an
+Indonesian quiz and its result is lost.
+
+### Decisions
+
+- **The language of a session is derived from its mode**: `fr-es` / `es-fr` → `es`,
+  `fr-id` / `id-fr` → `id`. No `language` column, no schema change: the mode is already
+  stored on every session. Rejected: a `language` column, which would repeat the mode
+  and could contradict it.
+- **Word ids carry their language as a prefix**: `es-n001`, `id-n001`. The backend still
+  treats `wordId` as an opaque string (max 20 characters, `es-n001` fits). The prefix
+  keeps the ids unique across languages, which `mostMissedWords` (grouped by `wordId`)
+  and the stored rows need to stay readable. The existing Spanish ids are renamed: the
+  app is not deployed yet, so no old version on a phone can send `n001` after the
+  migration, and no transition code is needed.
+- **New category `number`** for the Indonesian numbers. Questions and basic sentences
+  use the existing `expression`.
+
+### Changes
+
+1. `src/types/quiz.ts`: `QUIZ_MODES` gets `fr-id` and `id-fr` **at the end** (the order of
+   `byMode` follows this array, so the existing Spanish order does not move);
+   `QUIZ_CATEGORIES` gets `number`. A `QUIZ_LANGUAGES = ['es', 'id']` list and a
+   language → modes mapping live in the same file, next to the values they describe.
+2. A new **data migration** (SQL only, `prisma migrate dev --create-only`), never an edit
+   of an applied one. Every stored answer is Spanish today:
+   ```sql
+   UPDATE "QuizAnswer" SET "wordId" = 'es-' || "wordId" WHERE "wordId" NOT LIKE '%-%';
+   ```
+   The `WHERE` makes it harmless if it ever runs on rows already renamed.
+3. `GET /quiz-sessions/stats?lang=es|id`: the route validates `lang` (400 otherwise),
+   the service turns it into the list of modes, and the four repository queries take an
+   optional `modes` filter (`mode in (...)`, through `session.mode` for the answers).
+   Without `lang`, the answer stays what it is today: all languages together.
+4. `GET /quiz-sessions/word-progress` is **not** filtered: the app loads it once at
+   sign-in and keeps it while the user switches language; each row already carries its
+   mode, and the ids are unique across languages.
+5. Comments of `prisma/schema.prisma` (`'fr-es' | 'es-fr'`, `e.g. 'n001'`) and the quiz
+   section of `README.md` (new modes, new category, `lang` parameter, prefixed ids).
+
+### Tests (new ones only; the existing ones must pass unchanged)
+
+- Route: `fr-id`, `id-fr` and `number` accepted; `lang` invalid → 400; `lang` passed on
+  to the service.
+- Service: `lang: 'id'` → the repositories are called with `['fr-id', 'id-fr']`; no
+  `lang` → no filter; `byMode` order with the four modes.
+- Repository: the `modes` filter appears in each of the four queries, and is absent
+  when not given.
+- The migration has no unit test (everything is mocked): it is checked by hand on the
+  development database before the merge.
+
+---
+
 ## Architecture decisions — Summary
 
 | Decision | Choice | Reason |
@@ -486,6 +546,8 @@ the step that would make this layer fully pay off.
 | Article audio | `Bytes` in PostgreSQL, in its own table | No file storage to configure for a private test; never loaded by a list query |
 | Audio delivery | Whole file behind the JWT, no `Range` | An audio element cannot send the JWT on web; the app downloads then plays locally |
 | Article sync | In-process timer behind a feature flag | Single Railway instance; off by default because the content is not licensed |
+| Language of a quiz | Derived from the mode, no `language` column | The mode is already stored and says it; a second field could contradict it |
+| Word ids across languages | Language prefix (`es-n001`, `id-n001`) | Unique ids without a word table in the backend |
 | Database access | Repository layer (`src/repositories/`), modules of functions | Services read as business steps and no longer depend on Prisma types or error codes; classes with injection rejected as too much ceremony at this size |
 
 ---
