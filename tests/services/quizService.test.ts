@@ -377,6 +377,54 @@ describe('quizService', () => {
       expect(mockMissedWords.mock.calls[0][0]).toBe('user-1');
     });
 
+    // ── Languages ──
+    // The service turns `lang` into its modes, and the four reads must receive the
+    // SAME list: if one of them forgot it, the totals would describe one language and
+    // the missed words both. The modes are checked by value, written out here, not
+    // read from QUIZ_MODES_BY_LANGUAGE: a wrong mapping must fail this test.
+    const modesPassedToEachRead = () => [
+      mockSumByMode.mock.calls[0][1],
+      mockCountByCategory.mock.calls[0][1],
+      mockCountByLevel.mock.calls[0][1],
+      mockMissedWords.mock.calls[0][2], // [1] is the limit
+    ];
+
+    it('restricts every read to the Indonesian modes when lang is id', async () => {
+      mockStats({});
+
+      await getQuizStats('user-1', 'id');
+
+      expect(modesPassedToEachRead()).toEqual(Array(4).fill(['fr-id', 'id-fr']));
+    });
+
+    it('restricts every read to the Spanish modes when lang is es', async () => {
+      mockStats({});
+
+      await getQuizStats('user-1', 'es');
+
+      expect(modesPassedToEachRead()).toEqual(Array(4).fill(['fr-es', 'es-fr']));
+    });
+
+    it('passes no mode filter when no lang is given: all languages together', async () => {
+      mockStats({});
+
+      await getQuizStats('user-1');
+
+      expect(modesPassedToEachRead()).toEqual([undefined, undefined, undefined, undefined]);
+    });
+
+    it('lists the Spanish modes before the Indonesian ones in byMode', async () => {
+      const lastSessionAt = new Date('2026-10-01T08:00:00.000Z');
+      const row = (mode: string) => ({ mode, sessions: 1, score: 1, total: 2, lastSessionAt });
+      // Returned shuffled: the order must come from QUIZ_MODES, not from the database.
+      mockStats({ modes: [row('id-fr'), row('es-fr'), row('fr-id'), row('fr-es')] });
+
+      const stats = await getQuizStats('user-1');
+
+      expect(stats.byMode.map((m) => m.mode)).toEqual(['fr-es', 'es-fr', 'fr-id', 'id-fr']);
+      expect(stats.totalSessions).toBe(4);
+    });
+
     it('asks for a bounded number of missed words', async () => {
       mockStats({});
 

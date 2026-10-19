@@ -151,15 +151,33 @@ export const createSessionWithAnswers = async (
 // ─────────────────────────────────────────────
 // Each function below is one GROUP BY. Prisma returns aggregates under `_count`,
 // `_sum` and `_max`; they are renamed here so the service handles plain numbers.
+//
+// Each one takes an optional `modes`: when given, only the sessions played in one of
+// these modes count (the service passes the two modes of a language). When absent,
+// the filter is not written at all, so the query is exactly the one it was before
+// languages existed: every mode of the user.
+
+/**
+ * The `where` fragment restricting sessions to some modes, or nothing.
+ *
+ * Spread into a `where` on QuizSession, or into `session: { ... }` for QuizAnswer
+ * (an answer has no mode of its own: it is the mode of its session).
+ * The copy (`[...modes]`) is needed because Prisma's `in` is typed as a mutable array.
+ */
+const modeFilter = (modes?: readonly QuizMode[]): { mode?: { in: QuizMode[] } } =>
+  modes ? { mode: { in: [...modes] } } : {};
 
 /**
  * Totals of a user's sessions, one row per mode.
  * score and total are stored on the session, so these totals need no join.
  */
-export const sumSessionsByMode = async (userId: string): Promise<ModeTotals[]> => {
+export const sumSessionsByMode = async (
+  userId: string,
+  modes?: readonly QuizMode[]
+): Promise<ModeTotals[]> => {
   const rows = await prisma.quizSession.groupBy({
     by: ['mode'],
-    where: { userId },
+    where: { userId, ...modeFilter(modes) },
     _count: { _all: true },
     _sum: { score: true, total: true },
     _max: { createdAt: true },
@@ -179,10 +197,13 @@ export const sumSessionsByMode = async (userId: string): Promise<ModeTotals[]> =
 /**
  * Number of answers of a user per (category, isCorrect): up to two rows per category.
  */
-export const countAnswersByCategory = async (userId: string): Promise<AnswerCount[]> => {
+export const countAnswersByCategory = async (
+  userId: string,
+  modes?: readonly QuizMode[]
+): Promise<AnswerCount[]> => {
   const rows = await prisma.quizAnswer.groupBy({
     by: ['category', 'isCorrect'],
-    where: { session: { userId } },
+    where: { session: { userId, ...modeFilter(modes) } },
     _count: { _all: true },
   });
 
@@ -196,10 +217,13 @@ export const countAnswersByCategory = async (userId: string): Promise<AnswerCoun
 /**
  * Number of answers of a user per (level, isCorrect): up to two rows per level.
  */
-export const countAnswersByLevel = async (userId: string): Promise<AnswerCount[]> => {
+export const countAnswersByLevel = async (
+  userId: string,
+  modes?: readonly QuizMode[]
+): Promise<AnswerCount[]> => {
   const rows = await prisma.quizAnswer.groupBy({
     by: ['level', 'isCorrect'],
-    where: { session: { userId } },
+    where: { session: { userId, ...modeFilter(modes) } },
     _count: { _all: true },
   });
 
@@ -217,11 +241,16 @@ export const countAnswersByLevel = async (userId: string): Promise<AnswerCount[]
  * a different order on each call.
  *
  * @param limit - Maximum number of words; the value is chosen by the service
+ * @param modes - Only the answers of sessions played in these modes (see modeFilter)
  */
-export const findMostMissedWords = async (userId: string, limit: number): Promise<MissedWord[]> => {
+export const findMostMissedWords = async (
+  userId: string,
+  limit: number,
+  modes?: readonly QuizMode[]
+): Promise<MissedWord[]> => {
   const rows = await prisma.quizAnswer.groupBy({
     by: ['wordId'],
-    where: { session: { userId }, isCorrect: false },
+    where: { session: { userId, ...modeFilter(modes) }, isCorrect: false },
     _count: { wordId: true },
     orderBy: [{ _count: { wordId: 'desc' } }, { wordId: 'asc' }],
     take: limit,

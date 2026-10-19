@@ -3,7 +3,7 @@
 // Business logic for quiz results and user statistics:
 //   - createQuizSession: stores one finished quiz (session + one row per answer),
 //     idempotent and rate limited
-//   - getQuizStats: aggregated statistics of one user
+//   - getQuizStats: aggregated statistics of one user, all languages or one
 //   - getWordProgress: how well one user knows each word, per translation direction
 //
 // Important context: the vocabulary lives inside the mobile app, so the backend
@@ -21,7 +21,9 @@ import {
   QUIZ_CATEGORIES,
   QUIZ_LEVELS,
   QUIZ_MODES,
+  QUIZ_MODES_BY_LANGUAGE,
   QuizAnswerInput,
+  QuizLanguage,
   QuizMode,
   QuizSessionSummary,
   QuizStats,
@@ -242,14 +244,22 @@ const foldByKey = (
  * The response only contains `wordId` for missed words: the app owns the
  * vocabulary and resolves the id to the actual word.
  *
+ * With a `lang`, every figure is restricted to the quizzes of that language: the
+ * language is turned into its modes here (QUIZ_MODES_BY_LANGUAGE), and the four
+ * queries receive the same list, so the totals, the breakdowns and the missed words
+ * always describe the same set of quizzes. Without `lang`, all languages together.
+ *
  * @param userId - Authenticated user (from the JWT)
+ * @param lang - Optional language, already validated by the route
  */
-export const getQuizStats = async (userId: string): Promise<QuizStats> => {
+export const getQuizStats = async (userId: string, lang?: QuizLanguage): Promise<QuizStats> => {
+  const modes = lang ? QUIZ_MODES_BY_LANGUAGE[lang] : undefined;
+
   const [sessionsByMode, answersByCategory, answersByLevel, missedWords] = await Promise.all([
-    quizRepository.sumSessionsByMode(userId),
-    quizRepository.countAnswersByCategory(userId),
-    quizRepository.countAnswersByLevel(userId),
-    quizRepository.findMostMissedWords(userId, MOST_MISSED_LIMIT),
+    quizRepository.sumSessionsByMode(userId, modes),
+    quizRepository.countAnswersByCategory(userId, modes),
+    quizRepository.countAnswersByLevel(userId, modes),
+    quizRepository.findMostMissedWords(userId, MOST_MISSED_LIMIT, modes),
   ]);
 
   const byMode: ModeStats[] = sessionsByMode
