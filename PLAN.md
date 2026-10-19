@@ -466,9 +466,11 @@ the step that would make this layer fully pay off.
 
 ---
 
-## Step 9 — Indonesian (planned)
+## Step 9 — Indonesian
 
-**Branch:** `feat/indonesian-modes`
+**Branch:** `feat/indonesian-modes` (PR #26). Done: merged, migration checked on the
+development database. The plan below is kept as it was approved; what changed during
+the implementation is listed at the end of this step.
 
 The app gets a second language to learn, Indonesian, next to Spanish. The vocabulary
 stays in the app (plan on the app side: `vocabio2/PLAN.md`), so the backend only has to
@@ -523,6 +525,22 @@ Indonesian quiz and its result is lost.
   when not given.
 - The migration has no unit test (everything is mocked): it is checked by hand on the
   development database before the merge.
+
+### What changed during the implementation
+
+- **The word id prefix is enforced**, which the plan did not do: `POST /quiz-sessions`
+  answers 400 when a `wordId` does not start with the language of the mode (`es-` /
+  `id-`). Added after `/code-review`: without it, an app bug could file a Spanish word
+  under the Indonesian statistics. `languageOfMode` (`src/types/quiz.ts`) gives the
+  expected prefix, read from `QUIZ_MODES_BY_LANGUAGE`.
+- **`isOneOf` became a type guard** in the route: the casts after each validation
+  (`as QuizMode`, category, level) are gone.
+- **Two existing tests were changed, against the plan's "unchanged" rule**, with the
+  developer's approval: the route test data use prefixed ids (required by the check
+  above), and the `/stats` test without `lang` expects `('user-1', undefined)`, so the
+  route makes one call instead of a branch kept only for a Jest matcher.
+- `tests/types/quiz.test.ts` guards the mapping: every mode belongs to exactly one
+  language.
 
 ---
 

@@ -3,16 +3,15 @@
 ## Overview
 
 Backend of the Vocabio mobile application (vocabulary quizzes from French to Spanish or
-Indonesian, and back). It started
-as a messaging system and now covers three independent features, which share the same server,
-the same database and the same authentication:
+Indonesian, and back). It started as a messaging system and now covers three independent
+features, which share the same server, the same database and the same authentication:
 
 - **1:1 messaging** between users: conversations, text messages, read indicators, real time
   (REST + Socket.io).
 - **Quiz results and statistics**: each quiz finished by a signed-in user is stored in
-  detail, and the account page reads aggregated statistics (REST only). The same stored
-  answers give the progress of the user on each word, which the app no longer keeps on
-  the device.
+  detail, and the account page reads aggregated statistics (REST only), for all languages
+  or for one (Spanish or Indonesian). The same stored answers give the progress of the
+  user on each word, which the app no longer keeps on the device.
 - **Easy Spanish articles**: short news articles written for learners are copied from an
   external site, text and audio, and served to the app (REST only). Off by default, for
   private testing only: see "Articles" below.
@@ -544,6 +543,18 @@ GitHub Actions workflow: `.github/workflows/ci.yml`.
 - Sync job copying the latest articles of an external source (text + MP3), behind a flag
 - List, detail and audio endpoints
 
+### Step 8 — Repository layer
+- Every Prisma query moved to `src/repositories/`, one file per domain, no change of behavior
+- Shared shapes in `src/types/`, explicit return types on the services
+- `tests/repositories/boundary.test.ts` enforcing the direction of the dependencies
+
+### Step 9 — Indonesian
+- Quiz modes `fr-id` / `id-fr` and category `number`
+- Language of a quiz derived from its mode, no new column
+- Word ids prefixed by their language (`es-n001`, `id-n001`), checked on every answer;
+  data migration renaming the Spanish answers stored before
+- `?lang=es|id` filter on the statistics endpoint
+
 ---
 
 ## Out of scope (V1)
@@ -562,6 +573,7 @@ Quiz results:
 - Quiz duration and the option chosen for a wrong answer: not sent by the app
 - Server-side check that an answer was really correct: the vocabulary lives in the app
 - Results of guests (not signed in): nothing is stored without a JWT
+- Indonesian articles: the only article source is Spanish
 
 Articles:
 
