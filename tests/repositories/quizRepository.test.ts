@@ -243,6 +243,77 @@ describe('quizRepository', () => {
   });
 
   // ─────────────────────────────────────────────
+  describe('statistics restricted to some modes', () => {
+    const MODES = ['fr-id', 'id-fr'] as const;
+
+    it('sumSessionsByMode keeps the user filter and adds the modes', async () => {
+      mockSessionGroupBy.mockResolvedValue([]);
+
+      await sumSessionsByMode('user-1', MODES);
+
+      expect(mockSessionGroupBy.mock.calls[0][0].where).toEqual({
+        userId: 'user-1',
+        mode: { in: ['fr-id', 'id-fr'] },
+      });
+    });
+
+    // Answers have no mode column: the filter must go through their session, next
+    // to the user filter, not replace it.
+    it('countAnswersByCategory filters the modes through the session', async () => {
+      mockAnswerGroupBy.mockResolvedValue([]);
+
+      await countAnswersByCategory('user-1', MODES);
+
+      expect(mockAnswerGroupBy.mock.calls[0][0].where).toEqual({
+        session: { userId: 'user-1', mode: { in: ['fr-id', 'id-fr'] } },
+      });
+    });
+
+    it('countAnswersByLevel filters the modes through the session', async () => {
+      mockAnswerGroupBy.mockResolvedValue([]);
+
+      await countAnswersByLevel('user-1', MODES);
+
+      expect(mockAnswerGroupBy.mock.calls[0][0].where).toEqual({
+        session: { userId: 'user-1', mode: { in: ['fr-id', 'id-fr'] } },
+      });
+    });
+
+    it('findMostMissedWords filters the modes and still asks for wrong answers only', async () => {
+      mockAnswerGroupBy.mockResolvedValue([]);
+
+      await findMostMissedWords('user-1', 10, MODES);
+
+      const query = mockAnswerGroupBy.mock.calls[0][0];
+      expect(query.where).toEqual({
+        session: { userId: 'user-1', mode: { in: ['fr-id', 'id-fr'] } },
+        isCorrect: false,
+      });
+      expect(query.take).toBe(10);
+    });
+
+    // toStrictEqual, unlike toEqual, fails on a key present with an `undefined` value:
+    // without modes, the query must not even mention the mode.
+    it('writes no mode key at all when no modes are given', async () => {
+      mockSessionGroupBy.mockResolvedValue([]);
+      mockAnswerGroupBy.mockResolvedValue([]);
+
+      await sumSessionsByMode('user-1');
+      await countAnswersByCategory('user-1');
+      await findMostMissedWords('user-1', 10);
+
+      expect(mockSessionGroupBy.mock.calls[0][0].where).toStrictEqual({ userId: 'user-1' });
+      expect(mockAnswerGroupBy.mock.calls[0][0].where).toStrictEqual({
+        session: { userId: 'user-1' },
+      });
+      expect(mockAnswerGroupBy.mock.calls[1][0].where).toStrictEqual({
+        session: { userId: 'user-1' },
+        isCorrect: false,
+      });
+    });
+  });
+
+  // ─────────────────────────────────────────────
   describe('findAnswersOldestFirst', () => {
     it('reads the answers of the given user only, oldest first', async () => {
       mockAnswerFindMany.mockResolvedValue([]);

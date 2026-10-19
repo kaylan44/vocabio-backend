@@ -46,12 +46,12 @@ app.use('/quiz-sessions', quizSessionRouter);
 // ─────────────────────────────────────────────
 const SESSION_ID = '3f2b1c7e-8a54-4d2f-9b1a-0c5d6e7f8a90';
 
-const validAnswer = { wordId: 'n001', category: 'noun', level: 'A1', isCorrect: true };
+const validAnswer = { wordId: 'es-n001', category: 'noun', level: 'A1', isCorrect: true };
 
 const validBody = {
   id: SESSION_ID,
   mode: 'fr-es',
-  answers: [validAnswer, { wordId: 'v042', category: 'verb', level: 'A2', isCorrect: false }],
+  answers: [validAnswer, { wordId: 'es-v042', category: 'verb', level: 'A2', isCorrect: false }],
 };
 
 const fakeSession = {
@@ -130,6 +130,33 @@ describe('Routes /quiz-sessions', () => {
       expect(res.status).toBe(201);
     });
 
+    // The Indonesian modes and the `number` category. Checked on what reaches the
+    // service, not only on the status: a 201 alone would not show the value was kept.
+    it.each(['fr-id', 'id-fr'])('accepts the Indonesian mode %s', async (mode) => {
+      mockCreateQuizSession.mockResolvedValue({ session: { ...fakeSession, mode }, created: true });
+
+      const indonesianAnswer = { ...validAnswer, wordId: 'id-n001' };
+
+      const res = await request(app)
+        .post('/quiz-sessions')
+        .send({ ...validBody, mode, answers: [indonesianAnswer] });
+
+      expect(res.status).toBe(201);
+      expect(mockCreateQuizSession.mock.calls[0][2]).toBe(mode);
+    });
+
+    it('accepts an answer in the number category, with a prefixed word id', async () => {
+      mockCreateQuizSession.mockResolvedValue({ session: fakeSession, created: true });
+      const numberAnswer = { wordId: 'id-c001', category: 'number', level: 'A1', isCorrect: true };
+
+      const res = await request(app)
+        .post('/quiz-sessions')
+        .send({ ...validBody, mode: 'fr-id', answers: [numberAnswer] });
+
+      expect(res.status).toBe(201);
+      expect(mockCreateQuizSession.mock.calls[0][3]).toEqual([numberAnswer]);
+    });
+
     // One case per validation rule. Each must answer 400 with an error message and
     // must NOT reach the service.
     const tooManyAnswers = Array.from({ length: MAX_ANSWERS_PER_SESSION + 1 }, () => validAnswer);
@@ -151,6 +178,21 @@ describe('Routes /quiz-sessions', () => {
       ['wordId is empty', { ...validBody, answers: [{ ...validAnswer, wordId: '' }] }],
       ['wordId is too long', { ...validBody, answers: [{ ...validAnswer, wordId: 'n'.repeat(21) }] }],
       ['wordId is not a string', { ...validBody, answers: [{ ...validAnswer, wordId: 1 }] }],
+      // The prefix must be the language of the mode.
+      ['wordId has no language prefix', { ...validBody, answers: [{ ...validAnswer, wordId: 'n001' }] }],
+      ['wordId is only the prefix', { ...validBody, answers: [{ ...validAnswer, wordId: 'es-' }] }],
+      [
+        'wordId is Indonesian in a Spanish quiz',
+        { ...validBody, mode: 'fr-es', answers: [{ ...validAnswer, wordId: 'id-n001' }] },
+      ],
+      [
+        'wordId is Spanish in an Indonesian quiz',
+        { ...validBody, mode: 'id-fr', answers: [{ ...validAnswer, wordId: 'es-n001' }] },
+      ],
+      [
+        'one wordId of the session has the wrong prefix',
+        { ...validBody, answers: [validAnswer, { ...validAnswer, wordId: 'id-n002' }] },
+      ],
       ['category is unknown', { ...validBody, answers: [{ ...validAnswer, category: 'article' }] }],
       ['level is unknown', { ...validBody, answers: [{ ...validAnswer, level: 'C2' }] }],
       ['isCorrect is a string', { ...validBody, answers: [{ ...validAnswer, isCorrect: 'true' }] }],
@@ -164,6 +206,15 @@ describe('Routes /quiz-sessions', () => {
       expect(res.status).toBe(400);
       expect(typeof res.body.error).toBe('string');
       expect(mockCreateQuizSession).not.toHaveBeenCalled();
+    });
+
+    it('names the expected prefix and the faulty answer in the error', async () => {
+      const res = await request(app)
+        .post('/quiz-sessions')
+        .send({ ...validBody, mode: 'fr-id', answers: [{ ...validAnswer, wordId: 'id-n001' }, validAnswer] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('answers[1].wordId must start with "id-" in the mode fr-id');
     });
 
     it('returns 409 when the id belongs to another user', async () => {
@@ -209,7 +260,33 @@ describe('Routes /quiz-sessions', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(stats);
-      expect(mockGetQuizStats).toHaveBeenCalledWith('user-1');
+      // No `lang` in the URL: the service gets no language, i.e. all languages.
+      expect(mockGetQuizStats).toHaveBeenCalledWith('user-1', undefined);
+    });
+
+    it.each(['es', 'id'])('passes lang=%s on to the service', async (lang) => {
+      mockGetQuizStats.mockResolvedValue({ totalSessions: 0 });
+
+      const res = await request(app).get(`/quiz-sessions/stats?lang=${lang}`);
+
+      expect(res.status).toBe(200);
+      expect(mockGetQuizStats).toHaveBeenCalledWith('user-1', lang);
+    });
+
+    // Strict validation: an ignored lang would answer the statistics of every
+    // language, and the app would show them under the wrong flag.
+    it.each<[string, string]>([
+      ['lang is unknown', 'lang=fr'],
+      ['lang is empty', 'lang='],
+      ['lang is uppercase', 'lang=ES'],
+      ['lang is given twice (Express makes it an array)', 'lang=es&lang=id'],
+      ['lang is an object', 'lang[a]=es'],
+    ])('returns 400 when %s', async (_label, query) => {
+      const res = await request(app).get(`/quiz-sessions/stats?${query}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('lang must be one of: es, id');
+      expect(mockGetQuizStats).not.toHaveBeenCalled();
     });
 
     it('returns 500 with a generic message when the service fails', async () => {

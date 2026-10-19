@@ -22,7 +22,10 @@
 //
 // `as const` turns each array into a tuple of literal types, which lets us derive
 // the union types below instead of writing the same values twice.
-export const QUIZ_MODES = ['fr-es', 'es-fr'] as const;
+//
+// Order matters for QUIZ_MODES: `byMode` in the statistics follows it. New modes are
+// appended, so the order the app already shows does not move.
+export const QUIZ_MODES = ['fr-es', 'es-fr', 'fr-id', 'id-fr'] as const;
 export const QUIZ_CATEGORIES = [
   'noun',
   'verb',
@@ -30,12 +33,49 @@ export const QUIZ_CATEGORIES = [
   'adverb',
   'expression',
   'pronoun',
+  'number',
 ] as const;
 export const QUIZ_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1'] as const;
 
 export type QuizMode = (typeof QUIZ_MODES)[number];
 export type QuizCategory = (typeof QUIZ_CATEGORIES)[number];
 export type QuizLevel = (typeof QUIZ_LEVELS)[number];
+
+// ─────────────────────────────────────────────
+// Languages
+// ─────────────────────────────────────────────
+// The language learned in a quiz is not stored anywhere: it is derived from the mode
+// ('fr-id' and 'id-fr' are Indonesian). A `language` column was rejected: it would
+// repeat what the mode already says, and the two could one day contradict each other.
+//
+// Pitfall: a new mode must be added to QUIZ_MODES AND to one language below.
+// tests/types/quiz.test.ts fails if a mode belongs to no language, or to two.
+export const QUIZ_LANGUAGES = ['es', 'id'] as const;
+
+export type QuizLanguage = (typeof QUIZ_LANGUAGES)[number];
+
+// `Record<QuizLanguage, ...>`: forgetting a language of QUIZ_LANGUAGES here does not
+// compile. `readonly QuizMode[]`: a typo in a mode does not compile either.
+export const QUIZ_MODES_BY_LANGUAGE: Record<QuizLanguage, readonly QuizMode[]> = {
+  es: ['fr-es', 'es-fr'],
+  id: ['fr-id', 'id-fr'],
+};
+
+// The other direction: the language of a mode. Read from QUIZ_MODES_BY_LANGUAGE
+// rather than from the letters of the mode ('fr-id'.slice(-2) would also work today):
+// the mapping above stays the only place that says which mode is which language.
+// A function in a "types" folder, exceptionally: it is a lookup in the table above,
+// with no logic of its own, and both the route and the tests need it.
+export const languageOfMode = (mode: QuizMode): QuizLanguage => {
+  const language = QUIZ_LANGUAGES.find((lang) => QUIZ_MODES_BY_LANGUAGE[lang].includes(mode));
+  // Unreachable while tests/types/quiz.test.ts passes (every mode has one language).
+  // Thrown rather than returning a default: a wrong language would silently file
+  // the answers under the wrong statistics.
+  if (!language) {
+    throw new Error(`No language declared for the quiz mode ${mode}`);
+  }
+  return language;
+};
 
 // ─────────────────────────────────────────────
 // One answer of a quiz
