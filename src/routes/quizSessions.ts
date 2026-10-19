@@ -1,7 +1,7 @@
 // Quiz session routes.
 //
 // POST /quiz-sessions        → store the result of a finished quiz
-// GET  /quiz-sessions/stats  → aggregated statistics of the signed-in user
+// GET  /quiz-sessions/stats  → aggregated statistics of the signed-in user (?lang=es|id)
 // GET  /quiz-sessions/word-progress → progress of the signed-in user on each word
 //
 // No assertParticipant here: no conversation is involved. The protection is that
@@ -19,12 +19,12 @@ import {
 // The quiz vocabulary comes from where it is defined, not through the service.
 import {
   QUIZ_CATEGORIES,
+  QUIZ_LANGUAGES,
   QUIZ_LEVELS,
   QUIZ_MODES,
   QuizAnswerInput,
-  QuizCategory,
-  QuizLevel,
   QuizMode,
+  languageOfMode,
 } from '../types/quiz';
 import { handleError } from '../utils/errors';
 
@@ -34,7 +34,7 @@ router.use(authMiddleware);
 
 // Standard UUID shape (8-4-4-4-12 hexadecimal characters), any version.
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Word ids look like 'n001' today; 20 leaves room without accepting arbitrary text.
+// Word ids look like 'es-n001' today; 20 leaves room without accepting arbitrary text.
 const MAX_WORD_ID_LENGTH = 20;
 
 // `typeof null` is 'object' in JavaScript, and an array is an object too:
@@ -44,8 +44,13 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 // `includes` on a readonly tuple only accepts its own literal type, so we widen
 // the list to string[] to be able to test an arbitrary value.
-const isOneOf = (list: readonly string[], value: unknown): boolean =>
-  typeof value === 'string' && list.includes(value);
+//
+// `value is T` makes it a type guard: after `if (!isOneOf(QUIZ_MODES, mode)) return`,
+// TypeScript knows `mode` is a QuizMode, so no `as QuizMode` is needed afterwards.
+// A cast would repeat by hand what this check proves, and nothing would tie the two:
+// change the list here, forget the cast, and it would still compile.
+const isOneOf = <T extends string>(list: readonly T[], value: unknown): value is T =>
+  typeof value === 'string' && (list as readonly string[]).includes(value);
 
 type ValidationResult =
   | { ok: false; error: string }
@@ -102,6 +107,21 @@ const validateQuizSessionBody = (body: unknown): ValidationResult => {
       };
     }
 
+    // The id must carry the language of the session: 'es-n001' in a Spanish quiz,
+    // 'id-n001' in an Indonesian one. The statistics by language rely on it (the
+    // most missed words of a language are its answers grouped by wordId), and so does
+    // the app, which looks each id up in the vocabulary of one language only. A wrong
+    // or missing prefix is an app bug: rejected with a 400 so it shows up, instead of
+    // being stored and filed under the wrong language. Only the prefix is checked: the
+    // rest of the id belongs to the app (the backend has no word table).
+    const prefix = `${languageOfMode(mode)}-`;
+    if (!wordId.startsWith(prefix) || wordId.length === prefix.length) {
+      return {
+        ok: false,
+        error: `answers[${index}].wordId must start with "${prefix}" in the mode ${mode}`,
+      };
+    }
+
     if (!isOneOf(QUIZ_CATEGORIES, category)) {
       return {
         ok: false,
@@ -124,12 +144,7 @@ const validateQuizSessionBody = (body: unknown): ValidationResult => {
 
     // We rebuild the object field by field: any extra property sent by the client
     // is dropped instead of travelling to the service.
-    validAnswers.push({
-      wordId,
-      category: category as QuizCategory,
-      level: level as QuizLevel,
-      isCorrect,
-    });
+    validAnswers.push({ wordId, category, level, isCorrect });
   }
 
   return {
@@ -137,7 +152,7 @@ const validateQuizSessionBody = (body: unknown): ValidationResult => {
     // Lowercased: 'ABC…' and 'abc…' are the same UUID but would be two different
     // primary keys, which would defeat the idempotency.
     id: id.toLowerCase(),
-    mode: mode as QuizMode,
+    mode,
     answers: validAnswers,
   };
 };
@@ -171,11 +186,25 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────
-// GET /quiz-sessions/stats
+// GET /quiz-sessions/stats?lang=es
 // ─────────────────────────────────────────────
+// `lang` is optional: without it, the statistics cover every language.
 router.get('/stats', async (req: Request, res: Response) => {
+  const { lang } = req.query;
+
+  // Strict, like `level` on GET /articles: silently ignoring an unknown language
+  // would answer the statistics of ALL languages, and the app would show Spanish
+  // figures on the Indonesian screen. isOneOf also rejects `?lang=es&lang=id`
+  // (Express gives an array) and `?lang[a]=es` (an object): only a string passes.
+  if (lang !== undefined && !isOneOf(QUIZ_LANGUAGES, lang)) {
+    res.status(400).json({ error: `lang must be one of: ${QUIZ_LANGUAGES.join(', ')}` });
+    return;
+  }
+
   try {
-    const stats = await getQuizStats(req.user.id);
+    // After the check above, `lang` is a QuizLanguage or undefined (isOneOf is a
+    // type guard): the service receives either a valid language or no filter.
+    const stats = await getQuizStats(req.user.id, lang);
     res.json(stats);
   } catch (error) {
     handleError(res, error, 'GET /quiz-sessions/stats');
